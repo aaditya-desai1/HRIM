@@ -99,6 +99,30 @@ This script:
 
 This is the recommended approach for quickly testing the core functionality without dealing with AWS service mocks.
 
+### Testing with Gemini API Instead of OpenAI
+
+If you want to test with Google's Gemini API instead of OpenAI, use the `test_gemini_local.py` script:
+
+```bash
+python3 test_gemini_local.py
+```
+
+This script:
+1. Provides an interactive way to update client data or use the default
+2. Calls the Gemini API with proper authentication
+3. Generates an actual PDF from the Gemini response
+4. Saves both the raw markdown and PDF to the `test_output` directory
+5. Has no dependency on AWS services
+
+If you want to test with Gemini API and real email delivery, use the `test_with_gemini.py` script:
+
+```bash
+export SENDER_EMAIL=your-verified-email@example.com
+python3 test_with_gemini.py
+```
+
+Note: Both the sender and recipient email addresses must be verified in AWS SES for this to work.
+
 ### Testing with Real AWS SES
 
 AWS SES offers a free tier that allows 62,000 outgoing messages per month when sent from an Amazon EC2 instance. To test email delivery with real AWS SES:

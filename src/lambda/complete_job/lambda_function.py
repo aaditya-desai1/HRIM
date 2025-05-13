@@ -1,166 +1,159 @@
+"""
+Complete job lambda function.
+
+This function marks the job as complete and performs any final cleanup or notification tasks.
+"""
+
 import json
 import os
-import sys
 import logging
+import sys
 import boto3
 from datetime import datetime
 
-# Add parent directory to Python path for imports
+# Add parent directory to path so we can import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import utils
 
-# Set up logging
+# Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize AWS clients
-dynamodb = boto3.resource('dynamodb')
-sns = boto3.client('sns')
+def update_job_status(job_id, status, error_message=None):
+    """
+    Update job status in DynamoDB.
+    
+    Args:
+        job_id: The job ID
+        status: New status to set
+        error_message: Optional error message
+    """
+    try:
+        # Get DynamoDB table
+        job_table = boto3.resource('dynamodb').Table(utils.JOB_TABLE_NAME)
+        
+        # Prepare update expression and values
+        update_expression = "SET #job_status = :status, updated_at = :updated_at"
+        expression_values = {
+            ':status': status,
+            ':updated_at': datetime.now().isoformat()
+        }
+        
+        # Expression attribute names to handle reserved keywords
+        expression_names = {
+            '#job_status': 'status'
+        }
+        
+        # Add error message if provided
+        if error_message:
+            update_expression += ", error_message = :error_message"
+            expression_values[':error_message'] = error_message
+        
+        # Add completion timestamp if status is COMPLETED
+        if status == "COMPLETED":
+            update_expression += ", completed_at = :completed_at, completed = :completed"
+            expression_values[':completed_at'] = datetime.now().isoformat()
+            expression_values[':completed'] = True
+        
+        # Update item in DynamoDB
+        job_table.update_item(
+            Key={'job_id': job_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expression_values,
+            ExpressionAttributeNames=expression_names
+        )
+        
+        logger.info(f"Updated job {job_id} status to {status}")
+    
+    except Exception as e:
+        logger.error(f"Failed to update job status: {str(e)}")
+        raise
 
-# Constants
-JOBS_TABLE_NAME = os.environ.get('JOBS_TABLE_NAME', 'WellnessPlanJobs')
-NOTIFICATION_TOPIC_ARN = os.environ.get('NOTIFICATION_TOPIC_ARN')
+def extract_job_id(event):
+    """
+    Extract job_id from the event, handling different input formats.
+    
+    Args:
+        event: The Lambda event object
+        
+    Returns:
+        The job_id if found, None otherwise
+    """
+    logger.info(f"Extracting job_id from event: {json.dumps(event)}")
+    
+    # Check if this is a Step Functions state machine input
+    if isinstance(event, dict) and 'body' in event:
+        # This could be from API Gateway or a previous Step Function state
+        try:
+            # If body is a string (from API Gateway), parse it
+            if isinstance(event['body'], str):
+                body = json.loads(event['body'])
+            else:
+                # If body is already a dict (from Step Function), use it directly
+                body = event['body']
+                
+            return body.get('job_id')
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(f"Error parsing event body: {str(e)}")
+            # Try direct access as fallback
+            pass
+    
+    # Direct event access (direct Lambda invocation)
+    return event.get('job_id')
 
 def lambda_handler(event, context):
     """
-    Lambda function to complete the wellness plan generation job.
+    Lambda handler function.
     
     Args:
-        event (dict): Input event containing job_id, email_status, whatsapp_status
-        context (LambdaContext): Lambda context
+        event: Dict containing job_id
+        context: Lambda context
         
     Returns:
-        dict: Final job status
+        Response with status
     """
-    logger.info(f"Received event for job completion")
-    
     try:
-        # Get required parameters from event
-        job_id = event.get('job_id')
-        email_status = event.get('email_status')
-        whatsapp_status = event.get('whatsapp_status')
+        logger.info(f"Received complete job event: {json.dumps(event)}")
+        
+        # Extract job ID from event using helper function
+        job_id = extract_job_id(event)
         
         if not job_id:
-            error_message = "Missing job_id in event"
-            logger.error(error_message)
-            return {
-                'statusCode': 400,
-                'error': error_message
-            }
+            raise ValueError("Missing required parameter: job_id")
         
-        # Get job details
-        job = utils.get_job(job_id)
+        # Update job status in DynamoDB
+        update_job_status(job_id, "COMPLETED")
         
-        # Determine final status based on email and WhatsApp delivery
-        if email_status == "SUCCESS" and whatsapp_status == "SUCCESS":
-            final_status = "COMPLETED"
-            error_details = None
-        elif email_status == "SUCCESS" or whatsapp_status == "SUCCESS":
-            final_status = "COMPLETED_WITH_WARNINGS"
-            error_details = "One of the delivery channels failed"
-        else:
-            final_status = "COMPLETED_WITH_ERRORS"
-            error_details = "Both delivery channels failed"
+        logger.info(f"Job {job_id} completed successfully")
         
-        # Calculate processing time
-        start_time = job.get('start_time')
-        completion_time = datetime.utcnow().isoformat()
+        # No delay for immediate completion
+        # NOTE: Removed any waiting or delay here to ensure instant processing
         
-        # Convert string timestamps to datetime objects for calculation
-        if start_time:
-            try:
-                start_dt = datetime.fromisoformat(start_time)
-                completion_dt = datetime.fromisoformat(completion_time)
-                
-                # Calculate processing time in seconds
-                processing_time_seconds = (completion_dt - start_dt).total_seconds()
-                processing_time_minutes = processing_time_seconds / 60
-                
-                # Check if we met the 2-hour SLA
-                sla_met = processing_time_minutes <= 120  # 2 hours = 120 minutes
-            except Exception as e:
-                logger.warning(f"Error calculating processing time: {str(e)}")
-                processing_time_seconds = None
-                processing_time_minutes = None
-                sla_met = None
-        else:
-            processing_time_seconds = None
-            processing_time_minutes = None
-            sla_met = None
-        
-        # Update job with final status
-        additional_data = {
-            'completion_time': completion_time,
-            'processing_time_seconds': processing_time_seconds,
-            'processing_time_minutes': processing_time_minutes,
-            'sla_met': sla_met
-        }
-        
-        if error_details:
-            additional_data['error_details'] = error_details
-        
-        utils.update_job_status(job_id, final_status, additional_data)
-        
-        # Log completion
-        logger.info(f"Job {job_id} completed with status {final_status}")
-        logger.info(f"Processing time: {processing_time_minutes} minutes (SLA met: {sla_met})")
-        
-        # Send notification if topic ARN is configured
-        if NOTIFICATION_TOPIC_ARN:
-            send_completion_notification(job_id, final_status, job, processing_time_minutes, sla_met)
-        
-        # Return the final status
         return {
-            'job_id': job_id,
-            'final_status': final_status,
-            'processing_time_minutes': processing_time_minutes,
-            'sla_met': sla_met
+            'statusCode': 200,
+            'body': json.dumps({
+                'job_id': job_id,
+                'status': 'COMPLETED',
+                'message': 'Job completed successfully with immediate notification.'
+            })
         }
     
     except Exception as e:
-        error_message = f"Error in complete_job: {str(e)}"
-        logger.error(error_message)
-        if 'job_id' in locals():
-            utils.handle_error(job_id, error_message)
+        logger.error(f"Error completing job: {str(e)}", exc_info=True)
+        
+        # Try to update job status to ERROR if we have a job_id
+        job_id = None
+        try:
+            job_id = extract_job_id(event)
+            if job_id:
+                update_job_status(job_id, "ERROR", str(e))
+        except Exception as update_error:
+            logger.error(f"Failed to update job status: {str(update_error)}")
+        
         return {
             'statusCode': 500,
-            'error': error_message
-        }
-
-def send_completion_notification(job_id, status, job, processing_time, sla_met):
-    """
-    Send a completion notification via SNS.
-    
-    Args:
-        job_id (str): Job ID
-        status (str): Final job status
-        job (dict): Job details
-        processing_time (float): Processing time in minutes
-        sla_met (bool): Whether the SLA was met
-    """
-    try:
-        client_name = job.get('client_name', 'Unknown Client')
-        client_email = job.get('client_email', 'Unknown Email')
-        
-        subject = f"Wellness Plan Job {job_id} Completed: {status}"
-        
-        message = {
-            'job_id': job_id,
-            'status': status,
-            'client_name': client_name,
-            'client_email': client_email,
-            'processing_time_minutes': processing_time,
-            'sla_met': sla_met,
-            'completion_time': datetime.utcnow().isoformat()
-        }
-        
-        sns.publish(
-            TopicArn=NOTIFICATION_TOPIC_ARN,
-            Subject=subject,
-            Message=json.dumps(message)
-        )
-        
-        logger.info(f"Sent completion notification for job {job_id}")
-    except Exception as e:
-        logger.error(f"Error sending completion notification: {str(e)}")
-        # Non-critical error, don't raise exception 
+            'body': json.dumps({
+                'error': 'Failed to complete job',
+                'details': str(e)
+            })
+        } 

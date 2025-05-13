@@ -1,134 +1,134 @@
+"""
+Upload PDF lambda function.
+
+This function handles the final storage of the PDF in the designated S3 location
+and prepares for the email delivery step.
+"""
+
 import json
 import os
-import sys
 import logging
+import sys
 import boto3
-from botocore.exceptions import ClientError
 
-# Add parent directory to Python path for imports
+# Add parent directory to path so we can import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import utils
 
-# Set up logging
+# Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize AWS clients
-s3 = boto3.client('s3')
+# Initialize S3 client
+s3_client = boto3.client('s3')
 
-# Constants
-OUTPUT_BUCKET = os.environ.get('OUTPUT_BUCKET', 'wellness-plan-output')
+def generate_s3_presigned_url(bucket: str, key: str, expiration: int = 604800) -> str:
+    """
+    Generate a presigned URL for an S3 object.
+    
+    Args:
+        bucket: S3 bucket name
+        key: S3 object key
+        expiration: URL expiration time in seconds (default 7 days)
+        
+    Returns:
+        Presigned URL string
+    """
+    try:
+        response = s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': bucket, 'Key': key},
+            ExpiresIn=expiration
+        )
+        return response
+    except Exception as e:
+        logger.error(f"Error generating presigned URL: {str(e)}")
+        raise
 
 def lambda_handler(event, context):
     """
-    Lambda function to upload the generated PDF to S3.
+    Lambda handler function.
     
     Args:
-        event (dict): Input event containing job_id and pdf_data
-        context (LambdaContext): Lambda context
+        event: The event dict containing job_id, pdf_key, and client_data
+        context: Lambda context
         
     Returns:
-        dict: S3 location of uploaded PDF and job ID
+        Dict containing job ID, PDF URL, and status
     """
-    logger.info(f"Received event for PDF upload to S3")
-    
     try:
-        # Get required parameters from event
-        job_id = event.get('job_id')
-        pdf_data = event.get('pdf_data')
+        # Parse the event
+        if 'body' in event:
+            # If coming from API Gateway
+            body = json.loads(event['body'])
+            job_id = body.get('job_id')
+            pdf_key = body.get('pdf_key')
+            pdf_filename = body.get('pdf_filename')
+            client_data = body.get('client_data')
+        else:
+            # If coming from direct Lambda invocation
+            job_id = event.get('job_id')
+            pdf_key = event.get('pdf_key')
+            pdf_filename = event.get('pdf_filename')
+            client_data = event.get('client_data')
         
-        if not all([job_id, pdf_data]):
-            error_message = "Missing required parameters in event"
-            logger.error(error_message)
+        logger.info(f"Processing PDF upload for job: {job_id}")
+        
+        if not job_id or not pdf_key or not client_data:
+            logger.error("Missing required parameters: job_id, pdf_key, or client_data")
             return {
                 'statusCode': 400,
-                'error': error_message
+                'body': json.dumps({'error': 'Missing required parameters'})
             }
         
         # Update job status
-        utils.update_job_status(job_id, 'UPLOADING_PDF')
+        utils.update_job_status(job_id, utils.JobStatus.UPLOADING_PDF)
         
-        # Get job details for client info
-        job = utils.get_job(job_id)
-        client_name = job.get('client_name', 'client')
+        # Generate a presigned URL for the PDF
+        pdf_url = generate_s3_presigned_url(utils.OUTPUT_BUCKET, pdf_key)
         
-        # Sanitize client name for S3 key
-        sanitized_name = sanitize_filename(client_name)
-        
-        # Create S3 key for the PDF
-        s3_key = f"plans/{job_id}/{sanitized_name}_wellness_plan.pdf"
-        
-        # Convert the PDF data from Base64 encoding back to binary
-        binary_pdf_data = pdf_data.encode('latin1')
-        
-        # Upload PDF to S3
-        try:
-            s3_response = s3.put_object(
-                Bucket=OUTPUT_BUCKET,
-                Key=s3_key,
-                Body=binary_pdf_data,
-                ContentType='application/pdf'
-            )
-            logger.info(f"Successfully uploaded PDF to S3: {OUTPUT_BUCKET}/{s3_key}")
-        except ClientError as e:
-            error_message = f"Error uploading PDF to S3: {str(e)}"
-            utils.handle_error(job_id, error_message)
-            return {
-                'statusCode': 500,
-                'error': error_message
+        # Add PDF URL to job record
+        job_table = boto3.resource('dynamodb').Table(utils.JOB_TABLE_NAME)
+        job_table.update_item(
+            Key={'job_id': job_id},
+            UpdateExpression="SET pdf_key = :pdf_key, pdf_url = :pdf_url",
+            ExpressionAttributeValues={
+                ':pdf_key': pdf_key,
+                ':pdf_url': pdf_url
             }
+        )
         
-        # Create presigned URL for the PDF (30 min expiration)
-        try:
-            presigned_url = s3.generate_presigned_url(
-                'get_object',
-                Params={
-                    'Bucket': OUTPUT_BUCKET,
-                    'Key': s3_key
-                },
-                ExpiresIn=1800  # 30 minutes
-            )
-            logger.info(f"Created presigned URL for PDF")
-        except ClientError as e:
-            logger.warning(f"Could not generate presigned URL: {str(e)}")
-            presigned_url = None
+        logger.info(f"PDF URL generated and stored for job: {job_id}")
         
-        # Update job with S3 location
-        additional_data = {
-            'output_s3_bucket': OUTPUT_BUCKET,
-            'output_s3_key': s3_key,
-            'presigned_url': presigned_url
-        }
-        utils.update_job_status(job_id, 'PDF_UPLOADED', additional_data)
-        
-        # Return the S3 location and job ID for the next step
-        return {
+        # Prepare result for next step
+        result = {
             'job_id': job_id,
-            'output_s3_bucket': OUTPUT_BUCKET,
-            'output_s3_key': s3_key,
-            'presigned_url': presigned_url
+            'pdf_key': pdf_key,
+            'pdf_filename': pdf_filename,
+            'pdf_url': pdf_url,
+            'client_data': client_data,
+            'status': utils.JobStatus.SENDING_EMAIL
+        }
+        
+        # Update job status to indicate we're moving to send email
+        utils.update_job_status(job_id, utils.JobStatus.SENDING_EMAIL)
+        
+        logger.info(f"Job {job_id} proceeding to send_email")
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps(result, default=str)
         }
     
     except Exception as e:
-        error_message = f"Error in upload_pdf: {str(e)}"
-        logger.error(error_message)
-        if 'job_id' in locals():
-            utils.handle_error(job_id, error_message)
+        logger.error(f"Error in upload_pdf: {str(e)}", exc_info=True)
+        
+        # Update job status to failed if we have a job ID
+        if 'job_id' in locals() and job_id:
+            error_message = f"PDF upload error: {str(e)}"
+            utils.update_job_status(job_id, utils.JobStatus.FAILED, error_message)
+        
         return {
             'statusCode': 500,
-            'error': error_message
-        }
-
-def sanitize_filename(filename):
-    """
-    Sanitize filename for use in S3 keys.
-    
-    Args:
-        filename (str): Original filename
-        
-    Returns:
-        str: Sanitized filename
-    """
-    # Replace spaces with underscores and remove special characters
-    sanitized = ''.join(c if c.isalnum() or c in ['_', '-', '.'] else '_' for c in filename.replace(' ', '_'))
-    return sanitized
+            'body': json.dumps({'error': str(e)})
+        } 

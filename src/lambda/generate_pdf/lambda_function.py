@@ -1,286 +1,266 @@
+"""
+Generate PDF lambda function.
+
+This function converts the response from the Gemini API (markdown format)
+into a professionally formatted PDF document.
+"""
+
 import json
 import os
-import sys
 import logging
-import re
-from io import BytesIO
-from xhtml2pdf import pisa
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-from reportlab.lib.units import inch
+import sys
+import io
+from datetime import datetime
+import markdown
+import xhtml2pdf.pisa as pisa
+from typing import Tuple, Dict, Any
 
-# Add parent directory to Python path for imports
+# Add parent directory to path so we can import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import utils
 
-# Set up logging
+# Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-def lambda_handler(event, context):
+def markdown_to_html(markdown_text: str, client_name: str) -> str:
     """
-    Lambda function to generate a PDF from the OpenAI GPT-4o response.
+    Convert markdown text to HTML with additional styling.
     
     Args:
-        event (dict): Input event containing job_id and gpt_response
-        context (LambdaContext): Lambda context
+        markdown_text: The markdown text to convert
+        client_name: Client name for title
         
     Returns:
-        dict: Generated PDF data and job ID
+        HTML string
     """
-    logger.info(f"Received event for PDF generation")
+    # Convert markdown to HTML
+    html_body = markdown.markdown(markdown_text, extensions=['tables', 'nl2br'])
     
-    try:
-        # Get required parameters from event
-        job_id = event.get('job_id')
-        gpt_response = event.get('gpt_response')
+    # Create a styled HTML document
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Wellness Plan for {client_name}</title>
+        <style>
+            @page {{
+                size: letter;
+                margin: 2cm;
+            }}
+            body {{
+                font-family: Arial, sans-serif;
+                line-height: 1.5;
+                margin: 0;
+                padding: 0;
+                color: #333;
+            }}
+            .header {{
+                text-align: center;
+                margin-bottom: 30px;
+                border-bottom: 1px solid #4CAF50;
+                padding-bottom: 10px;
+                color: #4CAF50;
+            }}
+            h1 {{
+                color: #2E7D32;
+                font-size: 28px;
+                margin-top: 30px;
+                margin-bottom: 15px;
+            }}
+            h2 {{
+                color: #388E3C;
+                font-size: 22px;
+                margin-top: 25px;
+                margin-bottom: 10px;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 5px;
+            }}
+            h3 {{
+                color: #43A047;
+                font-size: 18px;
+                margin-top: 20px;
+                margin-bottom: 10px;
+            }}
+            p {{
+                margin-bottom: 10px;
+            }}
+            ul, ol {{
+                margin-top: 5px;
+                margin-bottom: 15px;
+            }}
+            li {{
+                margin-bottom: 5px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 15px 0;
+            }}
+            th {{
+                background-color: #E8F5E9;
+                border: 1px solid #ccc;
+                padding: 8px;
+                text-align: left;
+                font-weight: bold;
+            }}
+            td {{
+                border: 1px solid #ccc;
+                padding: 8px;
+                text-align: left;
+            }}
+            tr:nth-child(even) {{
+                background-color: #f2f2f2;
+            }}
+            .footer {{
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 10px;
+                border-top: 1px solid #4CAF50;
+                font-size: 12px;
+                color: #777;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>Personalized Wellness & Diet Plan</h1>
+            <h2>Prepared for: {client_name}</h2>
+            <p>Created on: {datetime.now().strftime('%B %d, %Y')}</p>
+        </div>
         
-        if not all([job_id, gpt_response]):
-            error_message = "Missing required parameters in event"
-            logger.error(error_message)
+        {html_body}
+        
+        <div class="footer">
+            <p>This personalized plan was created based on your specific information and wellness goals.</p>
+            <p>For questions or adjustments, please contact your wellness consultant.</p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
+def generate_pdf_from_html(html: str) -> Tuple[bytes, io.BytesIO]:
+    """
+    Generate a PDF from HTML content.
+    
+    Args:
+        html: The HTML content to convert
+        
+    Returns:
+        Tuple containing PDF bytes and BytesIO object
+    """
+    pdf_data = io.BytesIO()
+    
+    # Convert HTML to PDF
+    result = pisa.CreatePDF(
+        src=html,
+        dest=pdf_data,
+        encoding='UTF-8'
+    )
+    
+    if result.err:
+        logger.error(f"Error converting HTML to PDF: {result.err}")
+        raise Exception(f"PDF generation failed: {result.err}")
+    
+    # Get PDF bytes and reset BytesIO position
+    pdf_data.seek(0)
+    pdf_bytes = pdf_data.getvalue()
+    pdf_data.seek(0)
+    
+    return pdf_bytes, pdf_data
+
+def lambda_handler(event, context):
+    """
+    Lambda handler function.
+    
+    Args:
+        event: The event dict containing job_id, response, and client_data
+        context: Lambda context
+        
+    Returns:
+        Dict containing job ID, PDF key, and status
+    """
+    try:
+        # Parse the event
+        if 'body' in event:
+            # If coming from API Gateway
+            body = json.loads(event['body'])
+            job_id = body.get('job_id')
+            response_md = body.get('response')
+            client_data = body.get('client_data')
+        else:
+            # If coming from direct Lambda invocation
+            job_id = event.get('job_id')
+            response_md = event.get('response')
+            client_data = event.get('client_data')
+        
+        logger.info(f"Generating PDF for job: {job_id}")
+        
+        if not job_id or not response_md or not client_data:
+            logger.error("Missing required parameters: job_id, response, or client_data")
             return {
                 'statusCode': 400,
-                'error': error_message
+                'body': json.dumps({'error': 'Missing required parameters'})
             }
         
         # Update job status
-        utils.update_job_status(job_id, 'GENERATING_PDF')
+        utils.update_job_status(job_id, utils.JobStatus.GENERATING_PDF)
         
-        # Parse the GPT response to extract sections
-        parsed_content = parse_gpt_response(gpt_response)
+        # Get client name for PDF
+        client_name = client_data.get('Full Name', 'Client')
         
-        # Generate PDF from parsed content
-        pdf_data = generate_pdf_from_content(parsed_content)
+        # Convert markdown to HTML
+        html = markdown_to_html(response_md, client_name)
         
-        logger.info(f"Successfully generated PDF for job {job_id}")
+        # Generate PDF
+        pdf_bytes, pdf_data = generate_pdf_from_html(html)
         
-        # Update job status
-        utils.update_job_status(job_id, 'PDF_GENERATED')
+        # Create a unique filename for the PDF
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pdf_filename = f"{client_name.replace(' ', '_')}_wellness_plan_{timestamp}.pdf"
+        pdf_key = f"jobs/{job_id}/{pdf_filename}"
         
-        # Return the PDF data and job ID for the next step
-        return {
+        # Store the PDF in S3
+        utils.upload_binary_to_s3(
+            utils.OUTPUT_BUCKET,
+            pdf_key,
+            pdf_bytes,
+            'application/pdf'
+        )
+        
+        logger.info(f"PDF generated and stored for job: {job_id}, key: {pdf_key}")
+        
+        # Prepare result for next step
+        result = {
             'job_id': job_id,
-            'pdf_data': pdf_data.decode('latin1')  # Encode binary data for JSON
+            'pdf_key': pdf_key,
+            'pdf_filename': pdf_filename,
+            'client_data': client_data,
+            'status': utils.JobStatus.UPLOADING_PDF
+        }
+        
+        # Update job status to indicate we're moving to upload PDF
+        utils.update_job_status(job_id, utils.JobStatus.UPLOADING_PDF)
+        
+        logger.info(f"Job {job_id} proceeding to upload_pdf")
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps(result, default=str)
         }
     
     except Exception as e:
-        error_message = f"Error in generate_pdf: {str(e)}"
-        logger.error(error_message)
-        if 'job_id' in locals():
-            utils.handle_error(job_id, error_message)
+        logger.error(f"Error in generate_pdf: {str(e)}", exc_info=True)
+        
+        # Update job status to failed if we have a job ID
+        if 'job_id' in locals() and job_id:
+            error_message = f"PDF generation error: {str(e)}"
+            utils.update_job_status(job_id, utils.JobStatus.FAILED, error_message)
+        
         return {
             'statusCode': 500,
-            'error': error_message
-        }
-
-def parse_gpt_response(gpt_response):
-    """
-    Parse the GPT response text to extract the different sections.
-    
-    Args:
-        gpt_response (str): Raw GPT-4o text response
-        
-    Returns:
-        dict: Parsed content with sections
-    """
-    # Initialize with default empty sections
-    parsed_content = {
-        'meal_plans': {
-            'week1': [],
-            'week2': [],
-            'week3': [],
-            'week4': []
-        },
-        'routine_charts': {
-            'week1': [],
-            'week2': [],
-            'week3': [],
-            'week4': []
-        },
-        'grocery_lists': {
-            'week1': [],
-            'week2': [],
-            'week3': [],
-            'week4': []
-        },
-        'dos_donts': {
-            'dos': [],
-            'donts': []
-        },
-        'stress_tips': {
-            'week1': [],
-            'week2': [],
-            'week3': [],
-            'week4': []
-        },
-        'summary': ""
-    }
-    
-    # Extract sections using pattern matching
-    # This is a simplified parser - a more robust approach would be needed for production
-    
-    # Extract meal plans
-    meal_plan_pattern = r"(?:Week \d+[^\n]*Meal Plan:?)(.*?)(?:(?:Week \d+|Weekly Daily Routine|Weekly Grocery|DOs & DON'Ts))"
-    meal_plan_matches = re.findall(meal_plan_pattern, gpt_response, re.DOTALL)
-    
-    for i, match in enumerate(meal_plan_matches[:4]):  # Up to 4 weeks
-        week_key = f'week{i+1}'
-        parsed_content['meal_plans'][week_key] = match.strip()
-    
-    # Extract routine charts
-    routine_pattern = r"(?:Week \d+[^\n]*Daily Routine:?)(.*?)(?:(?:Week \d+|Weekly Grocery|DOs & DON'Ts))"
-    routine_matches = re.findall(routine_pattern, gpt_response, re.DOTALL)
-    
-    for i, match in enumerate(routine_matches[:4]):  # Up to 4 weeks
-        week_key = f'week{i+1}'
-        parsed_content['routine_charts'][week_key] = match.strip()
-    
-    # Extract grocery lists
-    grocery_pattern = r"(?:Week \d+[^\n]*Grocery List:?)(.*?)(?:(?:Week \d+|DOs & DON'Ts|Stress & Balance))"
-    grocery_matches = re.findall(grocery_pattern, gpt_response, re.DOTALL)
-    
-    for i, match in enumerate(grocery_matches[:4]):  # Up to 4 weeks
-        week_key = f'week{i+1}'
-        parsed_content['grocery_lists'][week_key] = match.strip()
-    
-    # Extract DOs and DON'Ts
-    dos_pattern = r"(?:DOs:)(.*?)(?:DON'Ts:)"
-    dos_match = re.search(dos_pattern, gpt_response, re.DOTALL)
-    if dos_match:
-        dos_text = dos_match.group(1).strip()
-        parsed_content['dos_donts']['dos'] = [item.strip() for item in dos_text.split('\n') if item.strip()]
-    
-    donts_pattern = r"(?:DON'Ts:)(.*?)(?:Stress & Balance|Summary)"
-    donts_match = re.search(donts_pattern, gpt_response, re.DOTALL)
-    if donts_match:
-        donts_text = donts_match.group(1).strip()
-        parsed_content['dos_donts']['donts'] = [item.strip() for item in donts_text.split('\n') if item.strip()]
-    
-    # Extract stress tips
-    stress_pattern = r"(?:Week \d+[^\n]*Stress & Balance Tips:?)(.*?)(?:(?:Week \d+|Summary))"
-    stress_matches = re.findall(stress_pattern, gpt_response, re.DOTALL)
-    
-    for i, match in enumerate(stress_matches[:4]):  # Up to 4 weeks
-        week_key = f'week{i+1}'
-        parsed_content['stress_tips'][week_key] = match.strip()
-    
-    # Extract summary
-    summary_pattern = r"(?:Summary & Follow-up:?)(.*?)$"
-    summary_match = re.search(summary_pattern, gpt_response, re.DOTALL)
-    if summary_match:
-        parsed_content['summary'] = summary_match.group(1).strip()
-    
-    return parsed_content
-
-def generate_pdf_from_content(parsed_content):
-    """
-    Generate a PDF from the parsed content.
-    
-    Args:
-        parsed_content (dict): Parsed content with sections
-        
-    Returns:
-        bytes: PDF file as bytes
-    """
-    # Create PDF buffer
-    buffer = BytesIO()
-    
-    # Get styles
-    styles = getSampleStyleSheet()
-    title_style = styles['Heading1']
-    subtitle_style = styles['Heading2']
-    normal_style = styles['Normal']
-    
-    # Custom styles
-    header_style = ParagraphStyle(
-        'Header',
-        parent=styles['Heading1'],
-        fontSize=16,
-        spaceAfter=12,
-        textColor=colors.darkblue
-    )
-    
-    subheader_style = ParagraphStyle(
-        'SubHeader',
-        parent=styles['Heading2'],
-        fontSize=14,
-        spaceAfter=10,
-        textColor=colors.darkblue
-    )
-    
-    # Create document
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        rightMargin=inch/2,
-        leftMargin=inch/2,
-        topMargin=inch/2,
-        bottomMargin=inch/2
-    )
-    
-    # Build content
-    content = []
-    
-    # Add title
-    content.append(Paragraph("Personalized Wellness Plan", header_style))
-    content.append(Spacer(1, 0.25*inch))
-    
-    # Add meal plans
-    content.append(Paragraph("Four-Week Meal Plan", header_style))
-    for week_num in range(1, 5):
-        week_key = f'week{week_num}'
-        content.append(Paragraph(f"Week {week_num} Meal Plan", subheader_style))
-        content.append(Paragraph(parsed_content['meal_plans'][week_key], normal_style))
-        content.append(Spacer(1, 0.25*inch))
-    
-    # Add routine charts
-    content.append(Paragraph("Weekly Daily Routine Charts", header_style))
-    for week_num in range(1, 5):
-        week_key = f'week{week_num}'
-        content.append(Paragraph(f"Week {week_num} Daily Routine", subheader_style))
-        content.append(Paragraph(parsed_content['routine_charts'][week_key], normal_style))
-        content.append(Spacer(1, 0.25*inch))
-    
-    # Add grocery lists
-    content.append(Paragraph("Weekly Grocery Lists", header_style))
-    for week_num in range(1, 5):
-        week_key = f'week{week_num}'
-        content.append(Paragraph(f"Week {week_num} Grocery List", subheader_style))
-        content.append(Paragraph(parsed_content['grocery_lists'][week_key], normal_style))
-        content.append(Spacer(1, 0.25*inch))
-    
-    # Add DOs and DON'Ts
-    content.append(Paragraph("DOs & DON'Ts", header_style))
-    
-    content.append(Paragraph("DOs:", subheader_style))
-    for do_item in parsed_content['dos_donts']['dos']:
-        content.append(Paragraph(f"• {do_item}", normal_style))
-    content.append(Spacer(1, 0.25*inch))
-    
-    content.append(Paragraph("DON'Ts:", subheader_style))
-    for dont_item in parsed_content['dos_donts']['donts']:
-        content.append(Paragraph(f"• {dont_item}", normal_style))
-    content.append(Spacer(1, 0.25*inch))
-    
-    # Add stress tips
-    content.append(Paragraph("Stress & Balance Tips", header_style))
-    for week_num in range(1, 5):
-        week_key = f'week{week_num}'
-        content.append(Paragraph(f"Week {week_num} Stress & Balance Tips", subheader_style))
-        content.append(Paragraph(parsed_content['stress_tips'][week_key], normal_style))
-        content.append(Spacer(1, 0.25*inch))
-    
-    # Add summary
-    content.append(Paragraph("Summary & Follow-up", header_style))
-    content.append(Paragraph(parsed_content['summary'], normal_style))
-    
-    # Build the PDF
-    doc.build(content)
-    
-    # Get the PDF data
-    pdf_data = buffer.getvalue()
-    buffer.close()
-    
-    return pdf_data 
+            'body': json.dumps({'error': str(e)})
+        } 

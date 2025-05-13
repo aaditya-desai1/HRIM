@@ -1,20 +1,23 @@
-resource "aws_sfn_state_machine" "wellness_plan_workflow" {
-  name     = "WellnessPlanWorkflow"
-  role_arn = aws_iam_role.step_functions_role.arn
-
+# Step Functions state machine for the HRIM workflow
+resource "aws_sfn_state_machine" "hrim_workflow" {
+  count     = var.enable_step_functions ? 1 : 0
+  name      = var.step_function_name
+  role_arn  = aws_iam_role.step_functions_role[0].arn
+  
   definition = <<EOF
 {
-  "Comment": "State machine for Wellness Plan generation and delivery",
+  "Comment": "HRIM Wellness Plan Generation Workflow",
   "StartAt": "FetchData",
   "States": {
     "FetchData": {
       "Type": "Task",
       "Resource": "${aws_lambda_function.fetch_data.arn}",
+      "Next": "FormatPrompt",
       "Retry": [
         {
           "ErrorEquals": ["States.TaskFailed"],
-          "IntervalSeconds": 3,
-          "MaxAttempts": 2,
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
           "BackoffRate": 2.0
         }
       ],
@@ -24,17 +27,17 @@ resource "aws_sfn_state_machine" "wellness_plan_workflow" {
           "ResultPath": "$.error",
           "Next": "HandleError"
         }
-      ],
-      "Next": "FormatPrompt"
+      ]
     },
     "FormatPrompt": {
       "Type": "Task",
       "Resource": "${aws_lambda_function.format_prompt.arn}",
+      "Next": "CallGemini",
       "Retry": [
         {
           "ErrorEquals": ["States.TaskFailed"],
-          "IntervalSeconds": 3,
-          "MaxAttempts": 2,
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
           "BackoffRate": 2.0
         }
       ],
@@ -44,12 +47,12 @@ resource "aws_sfn_state_machine" "wellness_plan_workflow" {
           "ResultPath": "$.error",
           "Next": "HandleError"
         }
-      ],
-      "Next": "CallOpenAI"
+      ]
     },
-    "CallOpenAI": {
+    "CallGemini": {
       "Type": "Task",
-      "Resource": "${aws_lambda_function.call_openai.arn}",
+      "Resource": "${aws_lambda_function.call_gemini.arn}",
+      "Next": "GeneratePDF",
       "Retry": [
         {
           "ErrorEquals": ["States.TaskFailed"],
@@ -64,17 +67,17 @@ resource "aws_sfn_state_machine" "wellness_plan_workflow" {
           "ResultPath": "$.error",
           "Next": "HandleError"
         }
-      ],
-      "Next": "GeneratePDF"
+      ]
     },
     "GeneratePDF": {
       "Type": "Task",
       "Resource": "${aws_lambda_function.generate_pdf.arn}",
+      "Next": "UploadPDF",
       "Retry": [
         {
           "ErrorEquals": ["States.TaskFailed"],
-          "IntervalSeconds": 3,
-          "MaxAttempts": 2,
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
           "BackoffRate": 2.0
         }
       ],
@@ -84,17 +87,17 @@ resource "aws_sfn_state_machine" "wellness_plan_workflow" {
           "ResultPath": "$.error",
           "Next": "HandleError"
         }
-      ],
-      "Next": "UploadPDF"
+      ]
     },
     "UploadPDF": {
       "Type": "Task",
       "Resource": "${aws_lambda_function.upload_pdf.arn}",
+      "Next": "SendEmail",
       "Retry": [
         {
           "ErrorEquals": ["States.TaskFailed"],
-          "IntervalSeconds": 3,
-          "MaxAttempts": 2,
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
           "BackoffRate": 2.0
         }
       ],
@@ -104,89 +107,37 @@ resource "aws_sfn_state_machine" "wellness_plan_workflow" {
           "ResultPath": "$.error",
           "Next": "HandleError"
         }
-      ],
-      "Next": "SendNotifications"
+      ]
     },
-    "SendNotifications": {
-      "Type": "Parallel",
-      "Branches": [
+    "SendEmail": {
+      "Type": "Task",
+      "Resource": "${aws_lambda_function.send_email.arn}",
+      "Next": "CompleteJob",
+      "Retry": [
         {
-          "StartAt": "SendEmail",
-          "States": {
-            "SendEmail": {
-              "Type": "Task",
-              "Resource": "${aws_lambda_function.send_email.arn}",
-              "Retry": [
-                {
-                  "ErrorEquals": ["States.TaskFailed"],
-                  "IntervalSeconds": 3,
-                  "MaxAttempts": 2,
-                  "BackoffRate": 2.0
-                }
-              ],
-              "Catch": [
-                {
-                  "ErrorEquals": ["States.ALL"],
-                  "ResultPath": "$.error",
-                  "Next": "EmailFailed"
-                }
-              ],
-              "End": true
-            },
-            "EmailFailed": {
-              "Type": "Pass",
-              "Result": {
-                "email_status": "FAILED",
-                "error": "Failed to send email"
-              },
-              "End": true
-            }
-          }
-        },
-        {
-          "StartAt": "SendWhatsApp",
-          "States": {
-            "SendWhatsApp": {
-              "Type": "Task",
-              "Resource": "${aws_lambda_function.send_whatsapp.arn}",
-              "Retry": [
-                {
-                  "ErrorEquals": ["States.TaskFailed"],
-                  "IntervalSeconds": 3,
-                  "MaxAttempts": 2,
-                  "BackoffRate": 2.0
-                }
-              ],
-              "Catch": [
-                {
-                  "ErrorEquals": ["States.ALL"],
-                  "ResultPath": "$.error",
-                  "Next": "WhatsAppFailed"
-                }
-              ],
-              "End": true
-            },
-            "WhatsAppFailed": {
-              "Type": "Pass",
-              "Result": {
-                "whatsapp_status": "FAILED",
-                "error": "Failed to send WhatsApp message"
-              },
-              "End": true
-            }
-          }
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
         }
       ],
-      "Next": "CompleteJob"
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleError"
+        }
+      ]
     },
     "CompleteJob": {
       "Type": "Task",
       "Resource": "${aws_lambda_function.complete_job.arn}",
+      "End": true,
       "Retry": [
         {
           "ErrorEquals": ["States.TaskFailed"],
-          "IntervalSeconds": 3,
-          "MaxAttempts": 2,
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
           "BackoffRate": 2.0
         }
       ],
@@ -196,45 +147,27 @@ resource "aws_sfn_state_machine" "wellness_plan_workflow" {
           "ResultPath": "$.error",
           "Next": "HandleError"
         }
-      ],
-      "End": true
+      ]
     },
     "HandleError": {
-      "Type": "Task",
-      "Resource": "${aws_lambda_function.handle_error.arn}",
+      "Type": "Pass",
+      "Result": "Error occurred in the HRIM workflow",
       "End": true
     }
   }
 }
 EOF
 
-  logging_configuration {
-    log_destination        = "${aws_cloudwatch_log_group.step_functions_log_group.arn}:*"
-    include_execution_data = true
-    level                  = "ALL"
+  tags = {
+    Environment = var.environment
+    Project     = "HRIM"
   }
-
-  depends_on = [
-    aws_lambda_function.fetch_data,
-    aws_lambda_function.format_prompt,
-    aws_lambda_function.call_openai,
-    aws_lambda_function.generate_pdf,
-    aws_lambda_function.upload_pdf,
-    aws_lambda_function.send_email,
-    aws_lambda_function.send_whatsapp,
-    aws_lambda_function.complete_job,
-    aws_lambda_function.handle_error,
-    aws_cloudwatch_log_group.step_functions_log_group
-  ]
 }
 
-resource "aws_cloudwatch_log_group" "step_functions_log_group" {
-  name              = "/aws/states/WellnessPlanWorkflow"
-  retention_in_days = 30
-}
-
+# IAM role for Step Functions
 resource "aws_iam_role" "step_functions_role" {
-  name = "WellnessPlanStepFunctionsRole"
+  count = var.enable_step_functions ? 1 : 0
+  name  = "hrim_step_functions_role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -248,11 +181,18 @@ resource "aws_iam_role" "step_functions_role" {
       }
     ]
   })
+  
+  tags = {
+    Environment = var.environment
+    Project     = "HRIM"
+  }
 }
 
+# IAM policy for Step Functions
 resource "aws_iam_policy" "step_functions_policy" {
-  name        = "WellnessPlanStepFunctionsPolicy"
-  description = "Policy for Step Functions to invoke Lambda functions"
+  count       = var.enable_step_functions ? 1 : 0
+  name        = "hrim_step_functions_policy"
+  description = "Policy for HRIM Step Functions state machine"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -265,35 +205,20 @@ resource "aws_iam_policy" "step_functions_policy" {
         Resource = [
           aws_lambda_function.fetch_data.arn,
           aws_lambda_function.format_prompt.arn,
-          aws_lambda_function.call_openai.arn,
+          aws_lambda_function.call_gemini.arn,
           aws_lambda_function.generate_pdf.arn,
           aws_lambda_function.upload_pdf.arn,
           aws_lambda_function.send_email.arn,
-          aws_lambda_function.send_whatsapp.arn,
-          aws_lambda_function.complete_job.arn,
-          aws_lambda_function.handle_error.arn
+          aws_lambda_function.complete_job.arn
         ]
-      },
-      {
-        Action = [
-          "logs:CreateLogDelivery",
-          "logs:GetLogDelivery",
-          "logs:UpdateLogDelivery",
-          "logs:DeleteLogDelivery",
-          "logs:ListLogDeliveries",
-          "logs:PutLogEvents",
-          "logs:PutResourcePolicy",
-          "logs:DescribeResourcePolicies",
-          "logs:DescribeLogGroups"
-        ]
-        Effect   = "Allow"
-        Resource = "*"
       }
     ]
   })
 }
 
+# Attach policy to Step Functions role
 resource "aws_iam_role_policy_attachment" "step_functions_policy_attachment" {
-  role       = aws_iam_role.step_functions_role.name
-  policy_arn = aws_iam_policy.step_functions_policy.arn
+  count      = var.enable_step_functions ? 1 : 0
+  role       = aws_iam_role.step_functions_role[0].name
+  policy_arn = aws_iam_policy.step_functions_policy[0].arn
 } 

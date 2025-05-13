@@ -11,21 +11,42 @@ variable "environment" {
 }
 
 variable "input_bucket_name" {
-  description = "Name of the S3 bucket for input data"
+  description = "Name of the S3 bucket for input client data"
   type        = string
-  default     = "wellness-data-input"
+  default     = "hrim-input-data"
 }
 
 variable "output_bucket_name" {
-  description = "Name of the S3 bucket for output PDFs"
+  description = "Name of the S3 bucket for output PDFs and artifacts"
   type        = string
-  default     = "wellness-plan-output"
+  default     = "hrim-output-data"
 }
 
-variable "jobs_table_name" {
-  description = "Name of the DynamoDB table for tracking jobs"
+variable "dynamodb_table_name" {
+  description = "Name of the DynamoDB table for job tracking"
   type        = string
-  default     = "WellnessPlanJobs"
+  default     = "hrim-jobs"
+}
+
+variable "secrets_name" {
+  description = "Name of the Secrets Manager secret for API keys"
+  type        = string
+  default     = "hrim-secrets"
+}
+
+variable "lambda_functions" {
+  description = "List of Lambda functions to create"
+  type        = list(string)
+  default     = [
+    "trigger_processor",
+    "fetch_data",
+    "format_prompt",
+    "call_gemini",
+    "generate_pdf",
+    "upload_pdf",
+    "send_email",
+    "complete_job"
+  ]
 }
 
 variable "lambda_memory_size" {
@@ -37,35 +58,43 @@ variable "lambda_memory_size" {
 variable "lambda_timeout" {
   description = "Timeout for Lambda functions (seconds)"
   type        = number
-  default     = 300  # 5 minutes
-}
-
-variable "openai_api_key_secret_name" {
-  description = "Name of the Secrets Manager secret containing the OpenAI API key"
-  type        = string
-  default     = "HRIM/OpenAI/ApiKey"
-}
-
-variable "whatsapp_api_secret_name" {
-  description = "Name of the Secrets Manager secret containing the WhatsApp API details"
-  type        = string
-  default     = "HRIM/WhatsApp/ApiKey"
+  default     = 300
 }
 
 variable "sender_email" {
-  description = "Email address to send emails from"
+  description = "Verified sender email address for Amazon SES"
   type        = string
   default     = "noreply@example.com"
+  sensitive   = true
 }
 
-variable "notification_enabled" {
-  description = "Whether to enable SNS notifications for job completion"
+variable "gemini_api_key" {
+  description = "Google Gemini API key"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "lambda_python_runtime" {
+  description = "Python runtime version for Lambda functions"
+  type        = string
+  default     = "python3.11"
+}
+
+variable "lambda_layer_arn" {
+  description = "ARN of the Lambda layer containing dependencies"
+  type        = string
+  default     = ""
+}
+
+variable "enable_step_functions" {
+  description = "Whether to enable Step Functions workflow"
   type        = bool
   default     = true
 }
 
-variable "openai_model" {
-  description = "OpenAI model to use"
+variable "step_function_name" {
+  description = "Name of the Step Functions state machine"
   type        = string
-  default     = "gpt-4o"
+  default     = "hrim-workflow"
 } 

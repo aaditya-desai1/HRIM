@@ -1,123 +1,118 @@
-import json
-import uuid
-import os
-import sys
-import logging
-import boto3
-from datetime import datetime
-import urllib.parse
+"""
+Trigger processor lambda function.
 
-# Add parent directory to Python path for imports
+This function is triggered by S3 event when a new client data file is uploaded.
+It extracts the S3 key from the event and initiates a new wellness plan generation job.
+"""
+
+import json
+import os
+import logging
+import sys
+import urllib.parse
+import boto3
+
+# Add parent directory to path so we can import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import utils
 
-# Set up logging
+# Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize AWS clients
-step_functions = boto3.client('stepfunctions')
-dynamodb = boto3.resource('dynamodb')
-
-# Environment variables
-STATE_MACHINE_ARN = os.environ.get('STATE_MACHINE_ARN')
-JOBS_TABLE_NAME = os.environ.get('JOBS_TABLE_NAME', 'WellnessPlanJobs')
+# Get Step Functions ARN from environment variables
+STEP_FUNCTION_ARN = os.environ.get('STEP_FUNCTION_ARN')
 
 def lambda_handler(event, context):
     """
-    Lambda function to process S3 events and initiate the wellness plan generation workflow.
+    Lambda handler function.
     
     Args:
-        event (dict): Event data from S3
-        context (LambdaContext): Lambda context
+        event: The event dict (containing S3 event details)
+        context: Lambda context
         
     Returns:
-        dict: Response with job ID and status
+        Dict containing job ID and status
     """
-    logger.info(f"Received event: {json.dumps(event)}")
-    
     try:
-        # Extract S3 bucket and key from the event
+        logger.info(f"Received event: {json.dumps(event)}")
+        
+        # Extract bucket name and file key from the S3 event
+        jobs = []
+        
         for record in event.get('Records', []):
-            if record.get('eventSource') == 'aws:s3' and record.get('eventName').startswith('ObjectCreated:'):
-                s3_event = record.get('s3', {})
-                bucket_name = s3_event.get('bucket', {}).get('name')
-                object_key = urllib.parse.unquote_plus(s3_event.get('object', {}).get('key'))
+            if record.get('eventSource') != 'aws:s3':
+                continue
                 
-                # Generate a unique job ID
-                job_id = str(uuid.uuid4())
-                timestamp = datetime.utcnow().isoformat()
+            bucket = record['s3']['bucket']['name']
+            key = urllib.parse.unquote_plus(record['s3']['object']['key'])
+            
+            logger.info(f"Processing new file: s3://{bucket}/{key}")
+            
+            # Only process files in the 'incoming/' directory
+            if not key.startswith('incoming/'):
+                logger.info(f"Skipping file outside of incoming directory: {key}")
+                continue
                 
-                # Create an entry in the jobs table
-                jobs_table = dynamodb.Table(JOBS_TABLE_NAME)
-                jobs_table.put_item(
-                    Item={
-                        'job_id': job_id,
-                        'input_s3_bucket': bucket_name,
-                        'input_s3_key': object_key,
-                        'status': 'PENDING',
-                        'start_time': timestamp,
-                        'client_email': 'pending_extraction',
-                        'client_whatsapp': 'pending_extraction',
-                        'client_name': 'pending_extraction'
-                    }
-                )
-                
-                logger.info(f"Created job record with ID: {job_id}")
-                
-                # Start Step Functions execution
-                if STATE_MACHINE_ARN:
-                    response = step_functions.start_execution(
-                        stateMachineArn=STATE_MACHINE_ARN,
-                        name=f"WellnessPlan-{job_id}",
-                        input=json.dumps({
-                            'job_id': job_id,
-                            'input_s3_bucket': bucket_name,
-                            'input_s3_key': object_key,
-                            'timestamp': timestamp
-                        })
-                    )
-                    
-                    logger.info(f"Started Step Functions execution: {response['executionArn']}")
-                    
-                    # Update job with execution ARN
-                    jobs_table.update_item(
-                        Key={'job_id': job_id},
-                        UpdateExpression="SET execution_arn = :arn",
-                        ExpressionAttributeValues={':arn': response['executionArn']}
-                    )
-                    
-                    return {
-                        'statusCode': 200,
-                        'body': json.dumps({
-                            'message': 'Processing initiated successfully',
-                            'job_id': job_id,
-                            'execution_arn': response['executionArn']
-                        })
-                    }
-                else:
-                    error_message = "STATE_MACHINE_ARN environment variable not configured"
-                    logger.error(error_message)
-                    utils.handle_error(job_id, error_message)
-                    return {
-                        'statusCode': 500,
-                        'body': json.dumps({
-                            'error': error_message
-                        })
-                    }
-    
-    except Exception as e:
-        logger.error(f"Error processing trigger: {str(e)}")
-        return {
-            'statusCode': 500,
-            'body': json.dumps({
-                'error': f"Failed to process trigger: {str(e)}"
+            # Generate a new job ID
+            job_id = utils.generate_job_id()
+            
+            # Create a job record in DynamoDB
+            job_record = utils.create_job_record(job_id, key)
+            
+            # Add job to the list
+            jobs.append({
+                'job_id': job_id,
+                'client_data_key': key,
+                'status': utils.JobStatus.CREATED
             })
+            
+            # Start the Step Functions workflow if ARN is available
+            if STEP_FUNCTION_ARN:
+                try:
+                    # Initialize the Step Functions client
+                    sfn_client = boto3.client('stepfunctions')
+                    
+                    # Prepare the input for the Step Functions workflow
+                    workflow_input = {
+                        'job_id': job_id,
+                        'client_data_key': key
+                    }
+                    
+                    # Start the workflow execution
+                    sfn_response = sfn_client.start_execution(
+                        stateMachineArn=STEP_FUNCTION_ARN,
+                        name=f"job-{job_id}",
+                        input=json.dumps(workflow_input)
+                    )
+                    
+                    logger.info(f"Started Step Functions workflow: {sfn_response['executionArn']}")
+                    
+                    # Update job record with execution ARN
+                    utils.update_job_record(job_id, {
+                        'execution_arn': sfn_response['executionArn'],
+                        'status': utils.JobStatus.FETCHING_DATA
+                    })
+                except Exception as e:
+                    logger.error(f"Error starting Step Functions workflow: {str(e)}", exc_info=True)
+            else:
+                logger.warning("STEP_FUNCTION_ARN not configured. Skipping workflow start.")
+                
+        # Return the list of created jobs
+        result = {
+            'jobs': jobs
+        }
+        
+        logger.info(f"Created {len(jobs)} jobs")
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps(result)
         }
     
-    return {
-        'statusCode': 400,
-        'body': json.dumps({
-            'error': 'No valid S3 event found in the event payload'
-        })
-    } 
+    except Exception as e:
+        logger.error(f"Error in trigger_processor: {str(e)}", exc_info=True)
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        } 

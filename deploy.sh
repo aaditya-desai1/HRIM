@@ -1,159 +1,220 @@
 #!/bin/bash
+# Deployment script for HRIM
 
-# Health & Wellness Report Implementation Manager (HRIM) Deployment Script
-# -----------------------------------------------------------------------
+set -e
 
-echo "HRIM Deployment Script"
-echo "======================"
-echo ""
+# Configurations
+PYTHON_VERSION="python3"  # Use system python3
+VENV_DIR=".venv"
+OUTPUT_DIR="build"
+LAYER_DIR="${OUTPUT_DIR}/layer"
+LAYER_PYTHON_DIR="${LAYER_DIR}/python"
+LAMBDA_DIR="src/lambda"
+TERRAFORM_DIR="terraform"
 
-# Check if AWS CLI is installed
-if ! command -v aws &> /dev/null; then
-    echo "AWS CLI is not installed. Please install it first:"
-    echo "pip install awscli"
-    echo "aws configure"
-    exit 1
-fi
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
 
-# Check if Terraform is installed
-if ! command -v terraform &> /dev/null; then
-    echo "Terraform is not installed. Please install it first."
-    exit 1
-fi
-
-# Function to create necessary directories if they don't exist
-create_dirs() {
-    echo "Creating necessary directories..."
-    mkdir -p src/lambda/{trigger_processor,fetch_data,format_prompt,call_openai,generate_pdf,upload_pdf,send_email,send_whatsapp,complete_job,handle_error}
-    mkdir -p terraform
-    mkdir -p test-data
-    echo "Done."
-    echo ""
-}
-
-# Function to set up AWS Secrets Manager secrets
-setup_secrets() {
-    echo "Setting up AWS Secrets Manager secrets..."
-    echo ""
-    echo "For OpenAI API:"
-    echo "---------------"
-    read -p "Enter your OpenAI API key: " openai_api_key
+# Check if required tools are available
+check_requirements() {
+    echo -e "${YELLOW}Checking requirements...${NC}"
     
-    # Create JSON file for the secret
-    echo "{\"api_key\": \"$openai_api_key\"}" > openai_secret.json
-    
-    # Create the secret in AWS Secrets Manager
-    aws secretsmanager create-secret --name HRIM/OpenAI/ApiKey --description "OpenAI API key for HRIM" --secret-string file://openai_secret.json
-    
-    echo ""
-    echo "For WhatsApp API:"
-    echo "----------------"
-    read -p "Enter your WhatsApp API URL: " whatsapp_api_url
-    read -p "Enter your WhatsApp access token: " whatsapp_access_token
-    
-    # Create JSON file for the secret
-    echo "{\"api_url\": \"$whatsapp_api_url\", \"access_token\": \"$whatsapp_access_token\"}" > whatsapp_secret.json
-    
-    # Create the secret in AWS Secrets Manager
-    aws secretsmanager create-secret --name HRIM/WhatsApp/ApiKey --description "WhatsApp API details for HRIM" --secret-string file://whatsapp_secret.json
-    
-    # Clean up temporary files
-    rm -f openai_secret.json whatsapp_secret.json
-    
-    echo "Secrets created successfully."
-    echo ""
-}
-
-# Function to deploy the infrastructure using Terraform
-deploy_terraform() {
-    echo "Deploying infrastructure using Terraform..."
-    cd terraform
-    
-    echo "Initializing Terraform..."
-    terraform init
-    
-    echo "Creating Terraform plan..."
-    terraform plan -out=tfplan
-    
-    echo "Applying Terraform plan..."
-    terraform apply tfplan
-    
-    cd ..
-    echo "Infrastructure deployed successfully."
-    echo ""
-}
-
-# Function to upload test data
-upload_test_data() {
-    echo "Uploading test data to S3..."
-    
-    # Get the input bucket name from Terraform output
-    cd terraform
-    input_bucket=$(terraform output -raw s3_buckets | grep input_bucket | cut -d'"' -f4)
-    cd ..
-    
-    if [ -z "$input_bucket" ]; then
-        echo "Could not get input bucket name from Terraform output."
+    if ! command -v ${PYTHON_VERSION} &> /dev/null; then
+        echo -e "${RED}Error: ${PYTHON_VERSION} is not installed.${NC}"
         exit 1
     fi
     
-    echo "Uploading sample form submission to s3://$input_bucket/forms/"
-    aws s3 cp test-data/sample-form-submission.json s3://$input_bucket/forms/
+    # Check Python version is at least 3.8
+    PY_VERSION=$(${PYTHON_VERSION} -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    PY_MAJOR=$(echo $PY_VERSION | cut -d. -f1)
+    PY_MINOR=$(echo $PY_VERSION | cut -d. -f2)
     
-    echo "Test data uploaded successfully."
-    echo ""
+    if [ "$PY_MAJOR" -lt 3 ] || [ "$PY_MAJOR" -eq 3 -a "$PY_MINOR" -lt 8 ]; then
+        echo -e "${RED}Error: Python version must be at least 3.8 (found $PY_VERSION)${NC}"
+        exit 1
+    fi
+    
+    if ! command -v zip &> /dev/null; then
+        echo -e "${RED}Error: zip is not installed.${NC}"
+        exit 1
+    fi
+    
+    if ! command -v terraform &> /dev/null; then
+        echo -e "${YELLOW}Warning: Terraform is not installed. Terraform steps will be skipped.${NC}"
+    fi
+    
+    if ! command -v aws &> /dev/null; then
+        echo -e "${YELLOW}Warning: AWS CLI is not installed. AWS operations will be skipped.${NC}"
+    fi
+    
+    echo -e "${GREEN}Requirements check passed. Using Python $PY_VERSION.${NC}"
 }
 
-# Main script
-
-echo "What would you like to do?"
-echo "1. Create directory structure"
-echo "2. Set up AWS Secrets Manager secrets"
-echo "3. Deploy infrastructure with Terraform"
-echo "4. Upload test data to S3"
-echo "5. Full deployment (all of the above)"
-echo "6. Exit"
-
-read -p "Enter your choice (1-6): " choice
-
-case $choice in
-    1)
-        create_dirs
-        ;;
-    2)
-        setup_secrets
-        ;;
-    3)
-        deploy_terraform
-        ;;
-    4)
-        upload_test_data
-        ;;
-    5)
-        create_dirs
-        setup_secrets
-        deploy_terraform
-        upload_test_data
-        
-        echo "=================================================="
-        echo "HRIM has been fully deployed!"
-        echo "=================================================="
-        echo ""
-        echo "Next steps:"
-        echo "1. Monitor the Step Functions execution in the AWS console"
-        echo "2. Check the DynamoDB table for job status"
-        echo "3. Look for the generated PDF in the output S3 bucket"
-        echo "4. Verify email and WhatsApp delivery"
-        echo ""
-        ;;
-    6)
-        echo "Exiting."
-        exit 0
-        ;;
-    *)
-        echo "Invalid choice. Exiting."
+# Create virtual environment and return the path to the python executable
+setup_venv() {
+    echo -e "${YELLOW}Setting up virtual environment...${NC}"
+    
+    # Always start with a fresh venv
+    if [ -d "$VENV_DIR" ]; then
+        echo -e "${YELLOW}Removing existing virtual environment...${NC}"
+        rm -rf ${VENV_DIR}
+    fi
+    
+    echo -e "${YELLOW}Creating new virtual environment...${NC}"
+    ${PYTHON_VERSION} -m venv ${VENV_DIR}
+    
+    # Verify the venv was created properly
+    if [ ! -f "${VENV_DIR}/bin/python" ]; then
+        echo -e "${RED}Error: Failed to create virtual environment.${NC}"
         exit 1
-        ;;
-esac
+    fi
+    
+    echo -e "${GREEN}Virtual environment created at ${VENV_DIR}${NC}"
+    
+    # Get the path to the python executable in the venv
+    VENV_PYTHON="${VENV_DIR}/bin/python"
+    
+    # Upgrade pip and install dependencies
+    echo -e "${YELLOW}Installing dependencies...${NC}"
+    ${VENV_PYTHON} -m pip install --upgrade pip
+    ${VENV_PYTHON} -m pip install -r requirements.txt
+    
+    echo -e "${GREEN}Virtual environment set up successfully.${NC}"
+    
+    # Return the path to the python executable
+    echo ${VENV_PYTHON}
+}
 
-echo "Deployment script complete." 
+# Clean build directory
+clean_build() {
+    echo -e "${YELLOW}Cleaning build directory...${NC}"
+    
+    rm -rf ${OUTPUT_DIR}
+    mkdir -p ${OUTPUT_DIR}
+    mkdir -p ${LAYER_PYTHON_DIR}
+    
+    echo -e "${GREEN}Build directory cleaned.${NC}"
+}
+
+# Create layer with dependencies
+create_layer() {
+    VENV_PYTHON="$1"
+    
+    echo -e "${YELLOW}Creating Lambda layer...${NC}"
+    
+    # Install dependencies into the layer directory
+    ${VENV_PYTHON} -m pip install -r requirements.txt --target ${LAYER_PYTHON_DIR}
+    
+    # Create the layer zip file
+    cd ${LAYER_DIR}
+    zip -r ../lambda_layer.zip .
+    cd ../..
+    
+    echo -e "${GREEN}Lambda layer created at ${OUTPUT_DIR}/lambda_layer.zip${NC}"
+}
+
+# Create a shared utils module
+prepare_shared_utils() {
+    echo -e "${YELLOW}Preparing shared utils...${NC}"
+    
+    mkdir -p ${OUTPUT_DIR}/utils
+    cp ${LAMBDA_DIR}/utils.py ${OUTPUT_DIR}/utils/
+    
+    echo -e "${GREEN}Shared utils prepared.${NC}"
+}
+
+# Package Lambda functions
+package_lambdas() {
+    echo -e "${YELLOW}Packaging Lambda functions...${NC}"
+    
+    # List of Lambda functions to package
+    LAMBDA_FUNCTIONS=(
+        "trigger_processor"
+        "fetch_data"
+        "format_prompt"
+        "call_gemini"
+        "generate_pdf"
+        "upload_pdf"
+        "send_email"
+        "complete_job"
+        "form_submission"
+    )
+    
+    # Create temp directory for packaging
+    mkdir -p temp
+    
+    # Copy utils.py to temp directory
+    cp src/lambda/utils.py temp/
+    
+    # Loop through all Lambda functions
+    for func in "${LAMBDA_FUNCTIONS[@]}"; do
+        echo -e "${GREEN}Packaging $func...${NC}"
+        mkdir -p "deployment/$func"
+        
+        # Package Lambda function
+        cd temp
+        cp -R "../src/lambda/$func/"* .
+        zip -r "../deployment/$func/lambda_function.zip" * -x "*.git*" "*.pytest_cache*" "__pycache__/*" "*.pyc" "tests/*" "*__pycache__*" > /dev/null
+        cd ..
+        
+        # Create a symbolic link in the Lambda function directory for Terraform
+        ln -sf "$(pwd)/deployment/$func/lambda_function.zip" "src/lambda/$func/lambda_function.zip"
+        
+        # Clean up temp directory
+        rm -rf temp/*
+    done
+    
+    rm -rf temp
+    
+    echo -e "${GREEN}All Lambda functions packaged successfully.${NC}"
+}
+
+# Deploy the serverless application using Terraform
+deploy_terraform() {
+    if command -v terraform &> /dev/null; then
+        echo -e "${YELLOW}Deploying with Terraform...${NC}"
+        
+        cd ${TERRAFORM_DIR}
+        
+        terraform init
+        terraform validate
+        
+        # Ask for confirmation before applying
+        echo -e "${YELLOW}Do you want to apply the Terraform configuration? (y/n)${NC}"
+        read -r response
+        if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+            terraform apply
+            echo -e "${GREEN}Terraform deployment completed.${NC}"
+        else
+            echo -e "${YELLOW}Terraform deployment skipped.${NC}"
+        fi
+        
+        cd ..
+    else
+        echo -e "${YELLOW}Terraform not installed, deployment skipped.${NC}"
+    fi
+}
+
+# Main function
+main() {
+    echo -e "${GREEN}===== HRIM Deployment Script =====${NC}"
+    
+    check_requirements
+    
+    # Create virtual environment and get the path to the python executable
+    VENV_PYTHON=$(setup_venv)
+    
+    clean_build
+    create_layer "${VENV_PYTHON}"
+    prepare_shared_utils
+    package_lambdas
+    deploy_terraform
+    
+    echo -e "${GREEN}===== Deployment completed =====${NC}"
+}
+
+# Execute main function
+main 

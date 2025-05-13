@@ -1,44 +1,55 @@
 # HRIM: Health & Wellness Report Implementation Manager
 
-An automated system for generating personalized wellness plans using AWS serverless architecture and OpenAI GPT-4o.
+An automated system for generating personalized wellness plans using AWS serverless architecture and Google's Gemini API.
 
 ## Overview
 
 HRIM automates the process of generating personalized wellness and diet plans for clients based on data collected via Google Forms. The system:
 
-1. Retrieves client data stored on AWS S3
-2. Processes it using the OpenAI GPT-4o API
+1. Retrieves client data from Google Forms (stored in AWS S3) 
+2. Processes it using the Google Gemini API
 3. Generates a comprehensive wellness plan in PDF format
 4. Stores the generated PDF back on S3
-5. Delivers it to the client via WhatsApp and email within 2 hours
+5. Delivers it to the client via email
+
+The entire process takes approximately 15 seconds from form submission to email delivery.
 
 ## Technical Architecture
 
 - **Backend**: AWS Lambda functions written in Python
 - **Workflow Orchestration**: AWS Step Functions
 - **Data Storage**: AWS S3 for raw data and generated PDFs, DynamoDB for job tracking
-- **AI**: OpenAI GPT-4o API for generating personalized wellness content
-- **Communication**: WhatsApp Business API and AWS SES for PDF delivery
+- **AI**: Google Gemini API for generating personalized wellness content
+- **Communication**: AWS SES for email delivery
+- **Form Integration**: Google Apps Script for Google Form integration
+- **API Gateway**: REST endpoint to receive Google Form submissions
 
 ## Repository Structure
 
 ```
 HRIM/
-├── docs/              # Project documentation
-├── src/               # Source code
-│   └── lambda/        # Lambda functions for each processing step
-│       ├── trigger_processor/ # Handles S3 events and starts the workflow
-│       ├── fetch_data/        # Retrieves client data from S3
-│       ├── format_prompt/     # Prepares data for the OpenAI API
-│       ├── call_openai/       # Calls the OpenAI API and handles response
-│       ├── generate_pdf/      # Creates PDF from the OpenAI response
-│       ├── upload_pdf/        # Uploads the PDF to S3
-│       ├── send_email/        # Sends the PDF via email
-│       ├── send_whatsapp/     # Sends the PDF via WhatsApp
-│       └── complete_job/      # Updates job status and handling completion
-├── terraform/         # Infrastructure as code (Terraform)
-├── requirements.txt   # Python dependencies
-└── README.md          # This file
+├── doc/                # Project documentation
+│   └── google_form_integration.md  # Google Form integration documentation
+├── src/                # Source code
+│   ├── google_form_integration/    # Google Apps Script for Form integration
+│   └── lambda/         # Lambda functions for each processing step
+│       ├── trigger_processor/      # Handles S3 events and starts the workflow
+│       ├── fetch_data/             # Retrieves client data from S3
+│       ├── format_prompt/          # Prepares data for the Gemini API
+│       ├── call_gemini/            # Calls the Gemini API and handles response
+│       ├── generate_pdf/           # Creates PDF from the Gemini response
+│       ├── upload_pdf/             # Uploads the PDF to S3
+│       ├── send_email/             # Sends the PDF via email
+│       ├── form_submission/        # Handles Google Form submissions
+│       └── complete_job/           # Updates job status and handling completion
+├── terraform/          # Infrastructure as code (Terraform)
+├── test-data/          # Sample data for testing
+├── test_hrim.py        # Test script for local testing
+├── test_form_submission.py  # Test script for form submission
+├── test_instant_delivery.py # Test script for instant delivery performance
+├── requirements.txt    # Python dependencies
+├── deploy.sh           # Deployment script
+└── README.md           # This file
 ```
 
 ## Setup
@@ -48,112 +59,117 @@ HRIM/
    ```
    pip install -r requirements.txt
    ```
-3. Configure AWS credentials
-4. Deploy infrastructure using Terraform:
+3. Configure AWS credentials using the AWS CLI:
    ```
-   cd terraform
-   terraform init
-   terraform apply
+   aws configure
    ```
+4. Obtain a Google Gemini API key from [Google AI Studio](https://ai.google.dev/)
+5. Export required environment variables:
+   ```
+   export GEMINI_API_KEY=your-gemini-api-key
+   export SENDER_EMAIL=your-verified-email@example.com
+   ```
+   
+   Note: For SES, you need to verify your email in the AWS SES console.
 
-## Configuration
+## Local Testing
 
-Create a `.env` file with the following variables:
-- `OPENAI_API_KEY`: Your OpenAI API key
-- `WHATSAPP_API_KEY`: Your WhatsApp Business API key
-- Other AWS configuration is handled through IAM roles
+You can test the system locally without deploying to AWS by using the provided test scripts:
 
-## Local Testing Without External APIs
-
-For local development and testing without requiring actual API keys or AWS resources, you can use the provided test tools:
-
-### Simple Workflow Test
-
-The `test_workflow.py` script provides a simple end-to-end test of the workflow logic without requiring any external services:
+### Basic Testing
 
 ```bash
-./test_workflow.py
+python test_hrim.py [optional-email-address]
 ```
 
 This script:
 1. Loads the sample client data from `test-data/sample-form-submission.json`
-2. Simulates the workflow steps with mock implementations
-3. Generates a text file representing the PDF output
-4. Simulates delivery notifications
+2. Runs through the entire workflow by calling each Lambda function locally
+3. Generates a PDF in the `test_output/pdfs` directory
+4. Optionally sends the PDF via email if an address is provided (requires AWS SES setup)
 
-### Simplified Testing With Core Functionality
-
-For an even simpler test that focuses just on the core functionality without Lambda functions, use the `simple_test.py` script:
+### Testing Instant Email Delivery
 
 ```bash
-python3 simple_test.py
+python test_instant_delivery.py [your-email@example.com]
 ```
 
 This script:
-1. Loads the sample client data
-2. Formats a prompt for wellness plan generation
-3. Simulates an OpenAI API response
-4. Generates an actual PDF (using xhtml2pdf)
-5. Creates mock email and WhatsApp delivery files
-6. Saves all output to the `test_output` directory for verification
+1. Tests the complete flow from form submission to email delivery
+2. Measures the time it takes to generate and deliver the wellness plan
+3. Reports detailed timing for each step of the process
+4. Verifies that the email is delivered quickly (typically within 15 seconds)
 
-This is the recommended approach for quickly testing the core functionality without dealing with AWS service mocks.
+## Deployment
 
-### Testing with Gemini API Instead of OpenAI
+To deploy the system to AWS:
 
-If you want to test with Google's Gemini API instead of OpenAI, use the `test_gemini_local.py` script:
-
-```bash
-python3 test_gemini_local.py
-```
-
-This script:
-1. Provides an interactive way to update client data or use the default
-2. Calls the Gemini API with proper authentication
-3. Generates an actual PDF from the Gemini response
-4. Saves both the raw markdown and PDF to the `test_output` directory
-5. Has no dependency on AWS services
-
-If you want to test with Gemini API and real email delivery, use the `test_with_gemini.py` script:
-
-```bash
-export SENDER_EMAIL=your-verified-email@example.com
-python3 test_with_gemini.py
-```
-
-Note: Both the sender and recipient email addresses must be verified in AWS SES for this to work.
-
-### Testing with Real AWS SES
-
-AWS SES offers a free tier that allows 62,000 outgoing messages per month when sent from an Amazon EC2 instance. To test email delivery with real AWS SES:
-
-1. Verify your sender email address in the AWS SES console
-2. Configure your AWS credentials using `aws configure`
-3. Set the sender email as an environment variable:
-   ```bash
-   export SENDER_EMAIL=your-verified-email@example.com
+1. Make sure you have AWS credentials configured
+2. Ensure you have Terraform installed
+3. Update the `terraform/variables.tf` file with your configuration
+4. Run the deployment script:
    ```
-4. Run the SES test script:
-   ```bash
-   ./test_ses_delivery.py
+   ./deploy.sh
    ```
 
-This script will:
-- Generate a sample wellness plan
-- Create a placeholder PDF file
-- Send a real email with the PDF attachment using AWS SES
-- Log the results and SES Message ID if successful
+The script will:
+1. Package all Lambda functions into ZIP files
+2. Create a Lambda layer with dependencies
+3. Initialize and apply the Terraform configuration
 
-### Mock Implementations for External Services
+## Google Form Integration
 
-For testing other components, mock implementations are provided in the `src/lambda/mocks/` directory:
+HRIM integrates with Google Forms to collect client data and automatically generate wellness plans. For setup:
 
-- `mock_openai.py`: Simulates OpenAI API responses
-- `mock_email.py`: Captures email sending for verification (when not using real SES)
-- `mock_whatsapp.py`: Logs WhatsApp messages instead of sending them
-- `mock_secrets.py`: Provides fake API keys for testing
+1. Deploy the AWS infrastructure with `terraform apply`
+2. Note the API Gateway URL that Terraform outputs
+3. Set up Google Apps Script with your Google Form
+4. Configure the script to send form data to your API Gateway
 
-These mocks create files in the `test_output/` directory for verification of the expected behavior.
+The integration allows clients to receive their wellness plans via email within approximately 15 seconds of form submission.
+
+For detailed instructions, see [Google Form Integration Guide](doc/google_form_integration.md).
+
+You can test the form submission process with:
+
+```bash
+python test_form_submission.py [your-api-gateway-url]
+```
+
+## Instant Email Delivery
+
+The system is optimized for fast delivery:
+
+1. **No Delays**: All processing steps happen immediately with no artificial delays
+2. **Performance Monitoring**: Each step logs its execution time for analysis
+3. **Optimized Lambda Functions**: Functions are designed for fast execution
+4. **Enhanced Error Handling**: Improved error handling to prevent delays
+
+Key optimizations include:
+- Removing delays in the `complete_job` Lambda function
+- Enhanced error handling in `send_email` Lambda function
+- Optimized workflow with minimal wait times
+- Fast PDF generation and email processing
+
+## Using Gemini API Instead of OpenAI
+
+This implementation uses Google's Gemini API instead of OpenAI's GPT models. Key differences:
+
+1. Authentication is handled using an API key from Google AI Studio
+2. The response format and API structure are different
+3. Prompt formatting is optimized for Gemini's capabilities
+
+## Customization
+
+1. **Client Data Format**: The system expects client data in a specific format. See `test-data/sample-form-submission.json` for an example.
+2. **Prompt Template**: The prompt for Gemini is defined in `src/lambda/format_prompt/lambda_function.py`. You can customize it to change the style or content of the wellness plan.
+3. **PDF Styling**: The PDF styling is defined in `src/lambda/generate_pdf/lambda_function.py`. Customize the HTML template to change the appearance of the PDF.
+4. **Email Template**: The email content is defined in `src/lambda/send_email/lambda_function.py`. Modify the HTML and text templates as needed.
+5. **Google Form**: The form submission handling is in `src/lambda/form_submission/lambda_function.py`. Modify the field mapping if you change your form fields.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 

@@ -1,4 +1,4 @@
-# Python artifacts
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -19,8 +19,9 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Environment files
+# Environments
 .env
 .venv
 env/
@@ -28,56 +29,39 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-.python-version
 
-# Terraform artifacts
-terraform/.terraform/
-terraform/.terraform.lock.hcl
-terraform/terraform.tfstate
-terraform/terraform.tfstate.backup
-terraform/.terraform.tfstate.lock.info
-terraform/tfplan
-terraform/crash.log
-terraform/override.tf
-terraform/override.tf.json
-terraform/*_override.tf
-terraform/*_override.tf.json
-
-# AWS Lambda deployment packages
-*.zip
-lambda-layer.zip
-lambda-*.zip
-
-# AWS credentials and profiles
-.aws/
-credentials
-config
-
-# IDE files
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-.DS_Store
+
+# AWS
+.aws-sam/
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+.terraform.tfstate.lock.info
+*.tfvars
+*.tfplan
+
+# Lambda deployment packages
+*.zip
+
+# Test outputs
+test_output/
 
 # Logs
 *.log
-logs/
 
-# Local testing and temporary files
-test/
-tmp/
-temp/
-*.tmp
-*.temp
+# Mac
+.DS_Store
 
-# Secrets and certificates
-*.pem
-*.key
-*secret*.json
-*credentials*.json
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Documentation build
-_build/
-_static/
-_templates/ 
+# Local configurations
+config.local.json
+secrets.json 

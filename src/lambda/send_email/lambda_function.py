@@ -1,262 +1,368 @@
+"""
+Send Email lambda function.
+
+This function sends the generated wellness plan PDF to the client via email.
+It retrieves the PDF from S3 and sends it as an attachment using AWS SES.
+"""
+
 import json
 import os
-import sys
 import logging
+import sys
 import boto3
-import base64
-from botocore.exceptions import ClientError
+import io
+import time
+import tempfile
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
-# Add parent directory to Python path for imports
+# Add parent directory to path so we can import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import utils
 
-# Set up logging
+# Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize AWS clients
-ses = boto3.client('ses')
-s3 = boto3.client('s3')
+# Initialize S3 client
+s3_client = boto3.client('s3')
 
-# Constants
-SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'noreply@example.com')
-EMAIL_SUBJECT = os.environ.get('EMAIL_SUBJECT', 'Your Personalized Wellness Plan')
-DEBUG_MODE = os.environ.get('DEBUG_MODE', 'false').lower() == 'true'
+def get_pdf_from_s3(bucket: str, key: str) -> bytes:
+    """
+    Retrieve a PDF file from S3.
+    
+    Args:
+        bucket: S3 bucket name
+        key: S3 object key
+        
+    Returns:
+        PDF file as bytes
+    """
+    try:
+        response = s3_client.get_object(Bucket=bucket, Key=key)
+        pdf_data = response['Body'].read()
+        return pdf_data
+    except Exception as e:
+        logger.error(f"Error retrieving PDF from S3: {str(e)}")
+        raise
+
+def create_text_email(client_name):
+    """
+    Create the plain text version of the email.
+    
+    Args:
+        client_name: Name of the client
+        
+    Returns:
+        String containing the text email body
+    """
+    return f"""Hello {client_name},
+
+Thank you for choosing our wellness planning service. Your personalized wellness and diet plan is attached to this email.
+
+This plan has been tailored to your specific needs, goals, and preferences. It includes:
+
+1. A comprehensive 4-week meal plan
+2. Weekly daily routine recommendations
+3. Weekly grocery lists
+4. DOs and DON'Ts for your wellness journey
+5. Stress management and balance tips
+6. Summary and follow-up recommendations
+
+If you have any questions or need adjustments to your plan, please don't hesitate to contact us.
+
+Best regards,
+Your Wellness Team
+"""
+
+def create_html_email(client_name):
+    """
+    Create the HTML version of the email.
+    
+    Args:
+        client_name: Name of the client
+        
+    Returns:
+        String containing the HTML email body
+    """
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+        }}
+        .header {{
+            color: #4CAF50;
+            border-bottom: 1px solid #4CAF50;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }}
+        h1 {{
+            color: #2E7D32;
+            font-size: 24px;
+        }}
+        h2 {{
+            color: #388E3C;
+            font-size: 20px;
+        }}
+        ul {{
+            margin-top: 10px;
+            margin-bottom: 20px;
+        }}
+        li {{
+            margin-bottom: 5px;
+        }}
+        .footer {{
+            margin-top: 30px;
+            padding-top: 10px;
+            border-top: 1px solid #4CAF50;
+            font-size: 12px;
+            color: #777;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Your Personalized Wellness Plan</h1>
+    </div>
+    
+    <p>Hello {client_name},</p>
+    
+    <p>Thank you for choosing our wellness planning service. Your personalized wellness and diet plan is attached to this email.</p>
+    
+    <p>This plan has been tailored to your specific needs, goals, and preferences. It includes:</p>
+    
+    <ul>
+        <li><strong>A comprehensive 4-week meal plan</strong> with easy-to-prepare, nutritious meals</li>
+        <li><strong>Weekly daily routine recommendations</strong> to optimize your wellness</li>
+        <li><strong>Weekly grocery lists</strong> with all necessary ingredients</li>
+        <li><strong>DOs and DON'Ts</strong> for your wellness journey</li>
+        <li><strong>Stress management and balance tips</strong> personalized for your lifestyle</li>
+        <li><strong>Summary and follow-up recommendations</strong> for continued success</li>
+    </ul>
+    
+    <p>If you have any questions or need adjustments to your plan, please don't hesitate to contact us.</p>
+    
+    <p>Best regards,<br>
+    Your Wellness Team</p>
+    
+    <div class="footer">
+        <p>This email and attachment contain personalized health information intended only for the recipient.</p>
+    </div>
+</body>
+</html>
+"""
+
+def extract_parameters(event):
+    """
+    Extract parameters from the event, handling different input formats.
+    
+    Args:
+        event: The Lambda event object
+        
+    Returns:
+        Tuple of (job_id, pdf_key, pdf_filename, client_data)
+    """
+    logger.info(f"Extracting parameters from event: {json.dumps(event)}")
+    
+    # Check if this is a Step Functions state machine input
+    if isinstance(event, dict) and 'body' in event:
+        # This could be from API Gateway or a previous Step Function state
+        try:
+            # If body is a string (from API Gateway), parse it
+            if isinstance(event['body'], str):
+                body = json.loads(event['body'])
+            else:
+                # If body is already a dict (from Step Function), use it directly
+                body = event['body']
+                
+            job_id = body.get('job_id')
+            pdf_key = body.get('pdf_key')
+            pdf_filename = body.get('pdf_filename')
+            client_data = body.get('client_data', {})
+            
+            return job_id, pdf_key, pdf_filename, client_data
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(f"Error parsing event body: {str(e)}")
+            # Try direct access as fallback
+            pass
+    
+    # Direct event access (direct Lambda invocation)
+    job_id = event.get('job_id')
+    pdf_key = event.get('pdf_key')
+    pdf_filename = event.get('pdf_filename')
+    client_data = event.get('client_data', {})
+    
+    return job_id, pdf_key, pdf_filename, client_data
 
 def lambda_handler(event, context):
     """
-    Lambda function to send the generated PDF to the client via email.
+    Lambda handler function.
     
     Args:
-        event (dict): Input event containing job_id, output_s3_bucket, output_s3_key
-        context (LambdaContext): Lambda context
+        event: Dict containing job_id, pdf_key, pdf_filename, and client_data
+        context: Lambda context
         
     Returns:
-        dict: Status of email sending and job ID
+        Response with status
     """
-    logger.info(f"Received event for sending email")
-    
     try:
-        # Get required parameters from event
-        job_id = event.get('job_id')
-        output_s3_bucket = event.get('output_s3_bucket')
-        output_s3_key = event.get('output_s3_key')
-        presigned_url = event.get('presigned_url')
+        logger.info(f"Received send email event: {json.dumps(event)}")
+        start_time = time.time()
         
-        # For testing - if specifically passing an email address in the event
-        test_recipient = event.get('test_recipient')
+        # Extract parameters using the helper function
+        job_id, pdf_key, pdf_filename, client_data = extract_parameters(event)
         
-        if not all([job_id, output_s3_bucket, output_s3_key]):
-            error_message = "Missing required parameters in event"
-            logger.error(error_message)
-            return {
-                'statusCode': 400,
-                'error': error_message
-            }
+        # Validate parameters
+        if not job_id or not pdf_key or not pdf_filename or not client_data:
+            missing_params = []
+            if not job_id: missing_params.append('job_id')
+            if not pdf_key: missing_params.append('pdf_key')
+            if not pdf_filename: missing_params.append('pdf_filename')
+            if not client_data: missing_params.append('client_data')
+            
+            error_msg = f"Missing required parameters: {', '.join(missing_params)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
-        # Update job status
-        utils.update_job_status(job_id, 'SENDING_EMAIL')
+        # Extract client info
+        client_name = client_data.get('Full Name', 'Client')
+        client_email = client_data.get('Email')
         
-        # Get job details for client info
-        job = utils.get_job(job_id)
-        client_email = test_recipient or job.get('client_email')
-        client_name = job.get('client_name', 'Valued Client')
+        if not client_email:
+            error_msg = "Client email not provided in client data"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+            
+        logger.info(f"Sending wellness plan to {client_name} at {client_email}")
         
-        if not client_email or client_email == 'pending_extraction' or client_email == 'missing@example.com':
-            error_message = "Client email address is missing or invalid"
-            logger.error(error_message)
-            utils.update_job_status(job_id, 'EMAIL_FAILED', {'error_details': error_message})
-            return {
-                'statusCode': 400,
-                'error': error_message,
-                'job_id': job_id
-            }
-        
-        # Fetch PDF from S3
+        # Check if SES is in sandbox mode by checking sending quota
+        ses_client = boto3.client('ses')
         try:
-            logger.info(f"Fetching PDF from S3: {output_s3_bucket}/{output_s3_key}")
-            response = s3.get_object(Bucket=output_s3_bucket, Key=output_s3_key)
-            pdf_data = response['Body'].read()
-        except ClientError as e:
-            error_message = f"Error fetching PDF from S3: {str(e)}"
-            utils.handle_error(job_id, error_message)
-            return {
-                'statusCode': 500,
-                'error': error_message,
-                'job_id': job_id
-            }
-        
-        # Send email with PDF attachment using SES
-        try:
-            # Prepare email
-            filename = output_s3_key.split('/')[-1]
+            quota = ses_client.get_send_quota()
+            max_send_rate = quota.get('MaxSendRate')
             
-            email_body_text = f"""
-Hello {client_name},
-
-Your personalized wellness plan is attached to this email. This plan has been specifically created for you based on the information you provided.
-
-The plan includes:
-- 4-Week Meal Plan
-- Weekly Daily Routine Chart
-- Weekly Grocery Lists
-- DOs & DON'Ts
-- Stress & Balance Tips
-- Summary & Follow-up Recommendations
-
-If you have any questions about your plan, please reply to this email.
-
-Thank you for choosing our wellness planning service!
-            """
+            # If max send rate is 1 or less, we're likely in sandbox mode
+            is_sandbox = max_send_rate <= 1
+            logger.info(f"SES account status: {'SANDBOX' if is_sandbox else 'PRODUCTION'}")
             
-            email_body_html = f"""
-<html>
-<head></head>
-<body>
-    <p>Hello {client_name},</p>
-    
-    <p>Your personalized wellness plan is attached to this email. This plan has been specifically created for you based on the information you provided.</p>
-    
-    <p>The plan includes:</p>
-    <ul>
-        <li>4-Week Meal Plan</li>
-        <li>Weekly Daily Routine Chart</li>
-        <li>Weekly Grocery Lists</li>
-        <li>DOs &amp; DON'Ts</li>
-        <li>Stress &amp; Balance Tips</li>
-        <li>Summary &amp; Follow-up Recommendations</li>
-    </ul>
-    
-    <p>If you have any questions about your plan, please reply to this email.</p>
-    
-    <p>Thank you for choosing our wellness planning service!</p>
-</body>
-</html>
-            """
-            
-            # If in debug mode, log additional information
-            if DEBUG_MODE:
-                logger.info(f"Sending email from: {SENDER_EMAIL}")
-                logger.info(f"Sending email to: {client_email}")
-                logger.info(f"Email subject: {EMAIL_SUBJECT}")
-                logger.info(f"PDF attachment size: {len(pdf_data)} bytes")
+            if is_sandbox and not (client_email.endswith('@simulator.amazonses.com') or 
+                                   'desaiaditya2710@gmail.com' in client_email):
+                logger.warning(
+                    f"Account is in SANDBOX mode. Both sender and recipient email addresses must be verified. "
+                    f"Recipient: {client_email}"
+                )
                 
-                # Check SES sending limits
-                try:
-                    quota = ses.get_send_quota()
-                    logger.info(f"SES quota - Max24HourSend: {quota['Max24HourSend']}, SentLast24Hours: {quota['SentLast24Hours']}")
-                except Exception as quota_error:
-                    logger.warning(f"Could not retrieve SES quota: {str(quota_error)}")
-            
-            # Create raw email message (with attachment)
-            response = ses.send_raw_email(
-                Source=SENDER_EMAIL,
-                Destinations=[client_email],
-                RawMessage={
-                    'Data': create_raw_email_with_attachment(
-                        sender=SENDER_EMAIL,
-                        recipients=[client_email],
-                        subject=EMAIL_SUBJECT,
-                        text_body=email_body_text,
-                        html_body=email_body_html,
-                        attachment=pdf_data,
-                        filename=filename
-                    )
-                }
-            )
-            
-            logger.info(f"Successfully sent email to {client_email}")
-            email_status = "SUCCESS"
-            email_message_id = response.get('MessageId', 'Unknown')
-            
-        except ClientError as e:
-            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-            error_message = e.response.get('Error', {}).get('Message', str(e))
-            
-            # Provide more detailed error messages for common SES issues
-            if error_code == 'MessageRejected':
-                error_message = f"Email rejected: {error_message}. Check if your sending address is verified in SES."
-            elif error_code == 'MailFromDomainNotVerified':
-                error_message = f"Domain not verified: {error_message}. Verify your domain in SES."
-            elif error_code == 'EmailAddressNotVerified':
-                error_message = f"Email address not verified: {error_message}. Verify your email in SES."
-            elif error_code == 'Throttling':
-                error_message = f"SES throttling: {error_message}. Check your sending limits."
-            else:
-                error_message = f"Error sending email ({error_code}): {error_message}"
+                # Check if the recipient email is verified
+                verified_addresses = ses_client.list_verified_email_addresses()
+                verified_list = verified_addresses.get('VerifiedEmailAddresses', [])
                 
-            logger.error(error_message)
-            email_status = "FAILED"
-            email_message_id = None
+                if client_email not in verified_list:
+                    logger.warning(f"Recipient email {client_email} is not verified. Attempting to verify...")
+                    # Send verification email
+                    ses_client.verify_email_identity(EmailAddress=client_email)
+                    logger.info(f"Verification email sent to {client_email}. User must click the link to verify.")
+                    return {
+                        'statusCode': 202,
+                        'body': json.dumps({
+                            'job_id': job_id,
+                            'status': 'Email verification required',
+                            'message': f"Recipient {client_email} is not verified. Verification email has been sent. "
+                                      f"Please check the inbox and verify the address before retrying."
+                        })
+                    }
+        except Exception as e:
+            logger.warning(f"Could not check SES account status: {str(e)}")
+            
+        # Download PDF from S3
+        logger.info(f"Downloading PDF from S3: {pdf_key}")
+        s3_client = boto3.client('s3')
         
-        # Update job with email status
-        additional_data = {
-            'email_status': email_status,
-            'email_message_id': email_message_id
-        }
-        utils.update_job_status(job_id, 'EMAIL_SENT', additional_data)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            pdf_path = temp_file.name
+            s3_client.download_fileobj(utils.OUTPUT_BUCKET, pdf_key, temp_file)
         
-        # Return the email status and job ID
+        # Prepare email
+        logger.info("Preparing email")
+        ses_client = boto3.client('ses')
+        
+        sender_email = os.environ.get('SENDER_EMAIL', 'desaiaditya2710@gmail.com')
+        
+        # Create email subject
+        subject = f"Your Personalized Wellness Plan - {client_name}"
+        
+        # Create email body
+        text_body = create_text_email(client_name)
+        html_body = create_html_email(client_name)
+        
+        # Create raw email message
+        logger.info("Creating raw email message")
+        message = MIMEMultipart('mixed')
+        message['Subject'] = subject
+        message['From'] = sender_email
+        message['To'] = client_email
+        
+        # Create the multipart/alternative part
+        msg_body = MIMEMultipart('alternative')
+        
+        # Add text and HTML versions to the message body
+        part1 = MIMEText(text_body, 'plain')
+        part2 = MIMEText(html_body, 'html')
+        msg_body.attach(part1)
+        msg_body.attach(part2)
+        
+        # Attach the message body to the main message
+        message.attach(msg_body)
+        
+        # Add the PDF attachment
+        logger.info(f"Attaching PDF: {pdf_filename}")
+        with open(pdf_path, 'rb') as file:
+            attachment = MIMEApplication(file.read())
+            attachment.add_header('Content-Disposition', 'attachment', filename=pdf_filename)
+            message.attach(attachment)
+        
+        # Send the email
+        logger.info(f"Sending email to {client_email}")
+        response = ses_client.send_raw_email(
+            Source=sender_email,
+            Destinations=[client_email],
+            RawMessage={'Data': message.as_string()}
+        )
+        
+        # Clean up temporary file
+        os.unlink(pdf_path)
+        
+        message_id = response.get('MessageId', 'Unknown')
+        logger.info(f"Email sent successfully. Message ID: {message_id}")
+        
+        # Log total execution time
+        execution_time = time.time() - start_time
+        logger.info(f"Email sent in {execution_time:.2f} seconds")
+        
         return {
-            'job_id': job_id,
-            'email_status': email_status,
-            'email_message_id': email_message_id
+            'statusCode': 200,
+            'body': json.dumps({
+                'job_id': job_id,
+                'message_id': message_id,
+                'recipient': client_email,
+                'status': 'Email sent successfully'
+            })
         }
     
     except Exception as e:
-        error_message = f"Error in send_email: {str(e)}"
-        logger.error(error_message)
-        if 'job_id' in locals():
-            utils.handle_error(job_id, error_message)
+        logger.error(f"Error sending email: {str(e)}", exc_info=True)
+        
         return {
             'statusCode': 500,
-            'error': error_message
-        }
-
-def create_raw_email_with_attachment(sender, recipients, subject, text_body, html_body, attachment, filename):
-    """
-    Create a raw email message with attachment.
-    
-    Args:
-        sender (str): Sender email address
-        recipients (list): List of recipient email addresses
-        subject (str): Email subject
-        text_body (str): Plain text email body
-        html_body (str): HTML email body
-        attachment (bytes): Attachment data
-        filename (str): Attachment filename
-        
-    Returns:
-        bytes: Raw email message
-    """
-    import email.utils
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    from email.mime.application import MIMEApplication
-    
-    msg = MIMEMultipart('mixed')
-    msg['Subject'] = subject
-    msg['From'] = sender
-    msg['To'] = ', '.join(recipients)
-    msg['Date'] = email.utils.formatdate()
-    
-    # Create alternative part (text/html)
-    alt = MIMEMultipart('alternative')
-    
-    # Attach text body
-    textpart = MIMEText(text_body.encode('utf-8'), 'plain', 'utf-8')
-    alt.attach(textpart)
-    
-    # Attach HTML body
-    htmlpart = MIMEText(html_body.encode('utf-8'), 'html', 'utf-8')
-    alt.attach(htmlpart)
-    
-    # Attach the multipart/alternative child container to the multipart/mixed parent container
-    msg.attach(alt)
-    
-    # Add attachment
-    att = MIMEApplication(attachment)
-    att.add_header('Content-Disposition', 'attachment', filename=filename)
-    msg.attach(att)
-    
-    return msg.as_string().encode('utf-8') 
+            'body': json.dumps({
+                'error': 'Failed to send email',
+                'details': str(e)
+            })
+        } 

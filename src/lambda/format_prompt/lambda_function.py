@@ -1,236 +1,237 @@
+"""
+Format prompt lambda function.
+
+This function prepares the client data for the Gemini API call by formatting it
+into a detailed prompt that will generate a personalized wellness plan.
+"""
+
 import json
 import os
-import sys
 import logging
+import sys
 
-# Add parent directory to Python path for imports
+# Add parent directory to path so we can import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import utils
 
-# Set up logging
+# Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-def lambda_handler(event, context):
+def format_gemini_prompt(client_data):
     """
-    Lambda function to format the client data into a GPT-4o prompt.
+    Format client data into a prompt for the Gemini API.
     
     Args:
-        event (dict): Input event containing job_id and client_data
-        context (LambdaContext): Lambda context
+        client_data: Dict containing client data
         
     Returns:
-        dict: Formatted prompt and job ID
+        Formatted prompt string
     """
-    logger.info(f"Received event for prompt formatting")
+    # Extract client data, defaulting to "Not provided" for missing fields
+    full_name = client_data.get('Full Name', 'Not provided')
+    email = client_data.get('Email', 'Not provided')
+    dob = client_data.get('Date of Birth', 'Not provided')
+    gender = client_data.get('Gender', 'Not provided')
+    height = client_data.get('Height', 'Not provided')
+    weight = client_data.get('Weight', 'Not provided')
+    occupation = client_data.get('Occupation', 'Not provided')
+    medical_conditions = client_data.get('Medical Conditions', 'None')
+    allergies = client_data.get('Allergies or Sensitivities', 'None')
+    medications = client_data.get('Current Medications', 'None')
+    dietary_preference = client_data.get('Dietary Preference', 'Vegan')  # Default to Vegan
+    meals_per_day = client_data.get('Meals per Day', '3')
+    meal_times = client_data.get('Usual Meal Times', 'Not provided')
+    cuisine = client_data.get('Cuisine Preference', 'Indian')  # Default to Indian
+    foods_enjoy = client_data.get('Foods You Enjoy', 'Not provided')
+    foods_dislike = client_data.get('Foods You Dislike', 'Not provided')
+    activity_level = client_data.get('Activity Level', 'Not provided')
+    exercise = client_data.get('Current Exercise Routine', 'Not provided')
+    sleep = client_data.get('Sleep Pattern', 'Not provided')
+    stress = client_data.get('Stress Level', 'Not provided')
+    water = client_data.get('Daily Water Intake', 'Not provided')
+    wellness_goals = client_data.get('Wellness Goals', 'Not provided')
+    weight_goal = client_data.get('Weight Management Goal', 'Not provided')
+    energy_concerns = client_data.get('Energy Level Concerns', 'Not provided')
+    food_budget = client_data.get('Food Budget', 'Not provided')
+    cooking_time = client_data.get('Available Cooking Time', 'Not provided')
+    household_size = client_data.get('Household Size', 'Not provided')
+    previous_plans = client_data.get('Previous Diet Plans', 'None')
+    additional_info = client_data.get('Additional Information', 'None')
     
-    try:
-        # Get required parameters from event
-        job_id = event.get('job_id')
-        client_data = event.get('client_data')
+    # Construct the prompt with a detailed persona and instructions
+    prompt = f"""
+You are an experienced Clinical Dietician with over 25 years of experience, specializing in Indian vegan nutrition and holistic wellness. You have a deep understanding of US FDA guidelines and Indian cultural context for food and lifestyle recommendations.
+
+# CLIENT INFORMATION:
+
+## Personal Info:
+- Full Name: {full_name}
+- Date of Birth: {dob}
+- Gender: {gender}
+- Height: {height}
+- Weight: {weight}
+- Occupation: {occupation}
+
+## Medical:
+- Conditions: {medical_conditions}
+- Allergies/Sensitivities: {allergies}
+- Current Medications: {medications}
+
+## Diet Habits:
+- Dietary Preference: {dietary_preference}
+- Meals per Day: {meals_per_day}
+- Usual Meal Times: {meal_times}
+- Cuisine Preference: {cuisine}
+- Foods Enjoyed: {foods_enjoy}
+- Foods Disliked: {foods_dislike}
+
+## Lifestyle:
+- Activity Level: {activity_level}
+- Current Exercise: {exercise}
+- Sleep Pattern: {sleep}
+- Stress Level: {stress}
+- Daily Water Intake: {water}
+
+## Other Details:
+- Wellness Goals: {wellness_goals}
+- Weight Management Goal: {weight_goal}
+- Energy Level Concerns: {energy_concerns}
+- Food Budget: {food_budget}
+- Available Cooking Time: {cooking_time}
+- Household Size: {household_size}
+- Previous Diet Plans: {previous_plans}
+- Additional Information: {additional_info}
+
+# DELIVERABLES:
+
+Based on the above client information, create a comprehensive 4-week Indian vegan wellness and diet plan with the following components:
+
+1. **4-Week Meal Plan** - Format each week in a clear tabular structure with:
+   - Breakfast, Lunch, Dinner, and Snacks for each day of the week
+   - Simple, quick-to-prepare meals (matching their Available Cooking Time)
+   - Include quantities for one person and for family (multiply servings as needed)
+   - Focus on Indian vegan options with local, seasonal ingredients
+   - Ensure nutritional balance meeting their goals
+
+2. **Weekly Daily Routine Chart** - Include:
+   - Wake-up routine
+   - Meal timings (matching their usual meal times)
+   - Recommended physical activities (appropriate for their activity level)
+   - Relaxation/stress management practices
+   - Hydration schedule
+   - Sleep routine
+   - Present this as a structured daily timeline
+
+3. **Weekly Grocery Lists** - For each week:
+   - Organized by category (vegetables, fruits, grains, legumes, etc.)
+   - Include exact quantities needed
+   - Focus on affordable options (matching their food budget)
+   - Include Indian names of ingredients when relevant
+   - Alternative options for hard-to-find ingredients
+
+4. **DOs & DON'Ts** - Provide:
+   - At least 10 specific "DO" recommendations
+   - At least 10 specific "DON'T" warnings
+   - These should be personalized to their goals, conditions, and preferences
+
+5. **Stress & Balance Tips** - For each week:
+   - 3-5 specific mindfulness or stress management techniques
+   - Simple yoga practices or breathing exercises
+   - Mental wellness suggestions
+   - Lifestyle adjustments
+
+6. **Summary & Follow-up** - Conclude with:
+   - Overview of how this plan addresses their specific goals
+   - Expected timeline for results
+   - Recommendations for progress tracking
+   - Suggestions for long-term sustainability
+
+Format your response in clear, structured Markdown with headings, lists, and tables for readability.
+
+DO NOT:
+- Include non-vegan ingredients
+- Propose unrealistic changes to their lifestyle
+- Include generic, non-personalized advice
+- Skip any of the required sections
+- Ask follow-up questions (use all information as provided)
+
+Remember: This is a professional wellness plan for a real client. Make it detailed, practical, and specifically tailored to their needs and constraints.
+"""
+    
+    return prompt
+
+def lambda_handler(event, context):
+    """
+    Lambda handler function.
+    
+    Args:
+        event: The event dict containing job_id and client_data
+        context: Lambda context
         
-        if not all([job_id, client_data]):
-            error_message = "Missing required parameters in event"
-            logger.error(error_message)
+    Returns:
+        Dict containing job ID, formatted prompt, and status
+    """
+    try:
+        # Parse the event
+        if 'body' in event:
+            # If coming from API Gateway
+            body = json.loads(event['body'])
+            job_id = body.get('job_id')
+            client_data = body.get('client_data')
+        else:
+            # If coming from direct Lambda invocation
+            job_id = event.get('job_id')
+            client_data = event.get('client_data')
+        
+        logger.info(f"Formatting prompt for job: {job_id}")
+        
+        if not job_id or not client_data:
+            logger.error("Missing required parameters: job_id or client_data")
             return {
                 'statusCode': 400,
-                'error': error_message
+                'body': json.dumps({'error': 'Missing required parameters'})
             }
         
         # Update job status
-        utils.update_job_status(job_id, 'FORMATTING_PROMPT')
+        utils.update_job_status(job_id, utils.JobStatus.FORMATTING_PROMPT)
         
-        # Extract client information from the data
-        # This is just a template - adjust field mappings based on actual Google Form structure
-        client_info = {
-            # Personal Info
-            "full_name": client_data.get("Full Name", "User Input Missing: Full Name"),
-            "dob": client_data.get("Date of Birth", "User Input Missing: DOB"),
-            "gender": client_data.get("Gender", "User Input Missing: Gender"),
-            "height": client_data.get("Height", "User Input Missing: Height"),
-            "weight": client_data.get("Weight", "User Input Missing: Weight"),
-            "occupation": client_data.get("Occupation", "User Input Missing: Occupation"),
-            
-            # Medical
-            "medical_conditions": client_data.get("Medical Conditions", "None reported"),
-            "allergies": client_data.get("Allergies or Sensitivities", "None reported"),
-            "medications": client_data.get("Current Medications", "None reported"),
-            
-            # Diet Habits
-            "diet_preference": client_data.get("Dietary Preference", "Vegan"),
-            "meals_per_day": client_data.get("Meals per Day", "3"),
-            "usual_meal_times": client_data.get("Usual Meal Times", "User Input Missing: Meal Times"),
-            "cuisine_preference": client_data.get("Cuisine Preference", "Indian"),
-            "likes": client_data.get("Foods You Enjoy", "User Input Missing: Food Likes"),
-            "dislikes": client_data.get("Foods You Dislike", "User Input Missing: Food Dislikes"),
-            
-            # Lifestyle
-            "activity_level": client_data.get("Activity Level", "User Input Missing: Activity Level"),
-            "exercise_routine": client_data.get("Current Exercise Routine", "None reported"),
-            "sleep_pattern": client_data.get("Sleep Pattern", "User Input Missing: Sleep Pattern"),
-            "stress_level": client_data.get("Stress Level", "User Input Missing: Stress Level"),
-            "water_intake": client_data.get("Daily Water Intake", "User Input Missing: Water Intake"),
-            
-            # Nutritional Goals
-            "wellness_goals": client_data.get("Wellness Goals", "User Input Missing: Wellness Goals"),
-            "weight_goal": client_data.get("Weight Management Goal", "User Input Missing: Weight Goal"),
-            "energy_issues": client_data.get("Energy Level Concerns", "None reported"),
-            
-            # Other Details
-            "food_budget": client_data.get("Food Budget", "Medium"),
-            "cooking_time": client_data.get("Available Cooking Time", "User Input Missing: Cooking Time"),
-            "household_size": client_data.get("Household Size", "1"),
-            "previous_diets": client_data.get("Previous Diet Plans", "None reported"),
-            "additional_info": client_data.get("Additional Information", "None provided")
+        # Format the prompt
+        prompt = format_gemini_prompt(client_data)
+        
+        # Store the formatted prompt in S3
+        prompt_key = f"jobs/{job_id}/prompt.txt"
+        utils.write_to_s3(utils.OUTPUT_BUCKET, prompt_key, prompt, 'text/plain')
+        
+        logger.info(f"Prompt formatted and stored for job: {job_id}")
+        
+        # Prepare result for next step
+        result = {
+            'job_id': job_id,
+            'prompt': prompt,
+            'prompt_key': prompt_key,
+            'client_data': client_data,
+            'status': utils.JobStatus.CALLING_AI
         }
         
-        # Format the prompt according to the detailed requirements in the specification
-        prompt = construct_gpt_prompt(client_info)
+        # Update job status to indicate we're moving to call AI
+        utils.update_job_status(job_id, utils.JobStatus.CALLING_AI)
         
-        logger.info(f"Successfully formatted prompt for job {job_id}")
+        logger.info(f"Job {job_id} proceeding to call_gemini")
         
-        # Return the formatted prompt and job ID for the next step
         return {
-            'job_id': job_id,
-            'formatted_prompt': prompt
+            'statusCode': 200,
+            'body': json.dumps(result, default=str)
         }
     
     except Exception as e:
-        error_message = f"Error in format_prompt: {str(e)}"
-        logger.error(error_message)
-        if 'job_id' in locals():
-            utils.handle_error(job_id, error_message)
+        logger.error(f"Error in format_prompt: {str(e)}", exc_info=True)
+        
+        # Update job status to failed if we have a job ID
+        if 'job_id' in locals() and job_id:
+            utils.update_job_status(job_id, utils.JobStatus.FAILED, str(e))
+        
         return {
             'statusCode': 500,
-            'error': error_message
-        }
-
-def construct_gpt_prompt(client_info):
-    """
-    Construct a detailed prompt for GPT-4o based on client information.
-    
-    Args:
-        client_info (dict): Extracted client information
-        
-    Returns:
-        str: Formatted GPT-4o prompt
-    """
-    # Construct the system role message
-    system_message = f"""
-You are a Clinical Dietician with over 25 years of experience, certified by the US FDA, specializing in vegan Indian nutrition. You create personalized wellness plans tailored to individual needs. Your expertise includes creating detailed Indian vegan meal plans that are nutritionally balanced, practical, and culturally appropriate.
-"""
-
-    # Construct the user message with detailed instructions and client data
-    user_message = f"""
-# OBJECTIVE
-Create a personalized 4-week Indian vegan diet & wellness plan for {client_info['full_name']}.
-
-# INPUT
-I'm providing the client's details - organize the plan into a comprehensive package with 4-week meal plans, routine charts, and grocery lists.
-
-## Personal Info
-- Full Name: {client_info['full_name']}
-- DOB: {client_info['dob']}
-- Gender: {client_info['gender']}
-- Height: {client_info['height']}
-- Weight: {client_info['weight']}
-- Occupation: {client_info['occupation']}
-
-## Medical
-- Medical Conditions: {client_info['medical_conditions']}
-- Allergies/Sensitivities: {client_info['allergies']}
-- Current Medications: {client_info['medications']}
-
-## Diet Habits
-- Dietary Preference: Indian Vegan
-- Meals per Day: {client_info['meals_per_day']}
-- Usual Meal Times: {client_info['usual_meal_times']}
-- Cuisine Preference: {client_info['cuisine_preference']}
-- Foods You Enjoy: {client_info['likes']}
-- Foods You Dislike: {client_info['dislikes']}
-
-## Lifestyle
-- Activity Level: {client_info['activity_level']}
-- Current Exercise Routine: {client_info['exercise_routine']}
-- Sleep Pattern: {client_info['sleep_pattern']}
-- Stress Level: {client_info['stress_level']}
-- Daily Water Intake: {client_info['water_intake']}
-
-## Nutritional Goals
-- Wellness Goals: {client_info['wellness_goals']}
-- Weight Management Goal: {client_info['weight_goal']}
-- Energy Level Concerns: {client_info['energy_issues']}
-
-## Other Details
-- Food Budget: {client_info['food_budget']}
-- Available Cooking Time: {client_info['cooking_time']}
-- Household Size: {client_info['household_size']}
-- Previous Diet Plans: {client_info['previous_diets']}
-- Additional Information: {client_info['additional_info']}
-
-# DELIVERABLES
-Create the complete plan with these sections (all must be included):
-
-## 1. Four-Week Meal Plan
-- Create 7-day meal plans for 4 weeks (Weeks 1-4)
-- For EACH meal, provide:
-  * Recipe title
-  * Short ingredient list
-  * Brief preparation steps
-  * Quantities for 1 person AND for a family (4 servings)
-- Each day must include breakfast, lunch, dinner, and 2 nutrient-dense snacks
-- Ensure all recipes are 100% vegan, Indian cuisine
-- Focus on quick, practical recipes (under 30 minutes)
-- Include traditional Indian ingredients available at standard Indian markets
-
-## 2. Weekly Daily Routine Chart
-- Create ONE detailed daily routine chart for EACH week
-- Include times for:
-  * Meals and hydration
-  * Physical activities appropriate for their fitness level
-  * Rest periods
-  * Mindfulness practices
-  * Sleep schedule recommendations
-
-## 3. Weekly Grocery Lists
-- Provide FOUR separate grocery lists (one for each week)
-- Include exact quantities needed for each ingredient
-- Organize by categories (vegetables, fruits, grains, spices, etc.)
-- List should align perfectly with the meal plan for that week
-
-## 4. DOs & DON'Ts
-- Provide specific recommendations based on their goals and health conditions
-- Include both dietary and lifestyle guidelines
-- List at least 10 specific items in each category
-
-## 5. Stress & Balance Tips
-- For EACH of the 4 weeks, provide 3-5 unique mindfulness or stress management techniques
-- Include breathing exercises, meditation practices, or yoga poses suitable for their level
-- Explain benefits and ideal times to practice each technique
-
-## 6. Summary & Follow-up
-- Summarize how this plan addresses their specific goals
-- Recommend when they should reassess their progress
-- Suggest 3-5 measurable indicators they can track to monitor success
-
-# IMPORTANT CONSTRAINTS
-- DO NOT ask follow-up questions - use all input exactly as given
-- DO NOT skip any of the requested sections - all must be included
-- DO NOT include non-vegan items (no dairy, eggs, honey, or animal products)
-- DO NOT suggest generic plans - this must be highly personalized to their specific data
-- DO NOT include any external references, links, or citations
-- DO NOT suggest they consult other professionals before starting
-- DO make reasonable estimations for any missing data points rather than pointing them out
-- DO ensure all meal plans are 100% vegetarian (plant-based)
-- DO consider Indian cultural context for all food recommendations
-- DO emphasize mindful eating practices throughout
-
-# OUTPUT FORMAT
-Provide the complete wellness plan as a structured, comprehensive document following the exact sections specified in DELIVERABLES.
-"""
-
-    # Full prompt
-    return {
-        "system": system_message.strip(),
-        "user": user_message.strip()
-    } 
+            'body': json.dumps({'error': str(e)})
+        } 

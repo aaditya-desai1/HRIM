@@ -159,4 +159,32 @@ else
     echo "Terraform not installed, deployment skipped."
 fi
 
+# Add the prompt template upload step after Terraform deployment
+echo "Deployment completed."
+
+# Upload the prompt template to S3
+if command -v aws &> /dev/null; then
+    echo "Uploading prompt template to S3..."
+    BUCKET_NAME=$(terraform -chdir=${TERRAFORM_DIR} output -raw input_bucket_name 2>/dev/null || echo "hrim-input-data")
+    
+    if [ -f "upload_prompt_template.sh" ]; then
+        chmod +x upload_prompt_template.sh
+        ./upload_prompt_template.sh "$BUCKET_NAME"
+        
+        echo ""
+        echo "IMPORTANT: Make sure the format_prompt Lambda function has the correct environment variable:"
+        echo "PROMPT_FILE_KEY=templates/prompt.txt"
+        echo ""
+        echo "You can set this environment variable by:"
+        echo "1. Running the update_prompt_env_var.sh script with your AWS region:"
+        echo "   ./update_prompt_env_var.sh --region YOUR_AWS_REGION"
+        echo "2. Or manually in the AWS Lambda console: https://console.aws.amazon.com/lambda"
+        echo ""
+    else
+        echo "Warning: upload_prompt_template.sh not found. Skipping prompt template upload."
+    fi
+else
+    echo "AWS CLI not installed, skipping prompt template upload."
+fi
+
 echo "===== Deployment completed =====" 

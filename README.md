@@ -24,6 +24,34 @@ The entire process takes approximately 15 seconds from form submission to email 
 - **Form Integration**: Google Apps Script for Google Form integration
 - **API Gateway**: REST endpoint to receive Google Form submissions
 
+## Standard Prompt Template
+
+HRIM uses a standardized prompt template stored as `prompt.txt` in the S3 bucket. This approach offers several advantages:
+
+1. **Consistency**: All wellness plans use the same prompt structure, ensuring consistent quality and format
+2. **Easy Updates**: The prompt can be modified without changing code by simply updating the template file in S3
+3. **Direct Data Flow**: The system sends both the prompt template and client data directly to Gemini AI
+
+The workflow for prompt handling:
+
+1. The standard prompt is stored at `templates/prompt.txt` in the input S3 bucket
+2. When processing a form submission, the system:
+   - Retrieves the standard prompt template from S3
+   - Sends both the prompt and the client data to Gemini API
+   - The Gemini AI uses the prompt as instructions and the client data as input
+
+To modify the prompt template:
+```bash
+# Update the prompt template in S3
+./upload_prompt_template.sh [your-bucket-name]
+```
+
+To test the prompt implementation:
+```bash
+# Test the prompt with sample client data
+./test_prompt_implementation.py
+```
+
 ## Repository Structure
 
 ```
@@ -47,6 +75,8 @@ HRIM/
 ├── test_hrim.py        # Test script for local testing
 ├── test_form_submission.py  # Test script for form submission
 ├── test_instant_delivery.py # Test script for instant delivery performance
+├── test_prompt_implementation.py # Test script for prompt template usage
+├── upload_prompt_template.sh # Script to upload prompt template to S3
 ├── requirements.txt    # Python dependencies
 ├── deploy.sh           # Deployment script
 └── README.md           # This file

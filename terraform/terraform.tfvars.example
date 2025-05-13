@@ -1,0 +1,28 @@
+# Example Terraform Variables File
+# Copy this file to terraform.tfvars and modify as needed
+
+# AWS Configuration
+aws_region           = "us-east-1"
+environment          = "dev"
+
+# Bucket Names
+input_bucket_name    = "hrim-input-data"
+output_bucket_name   = "hrim-output-data"
+
+# Database Configuration
+dynamodb_table_name  = "hrim-jobs"
+
+# Email Configuration
+sender_email         = "desaiaditya2710@gmail.com"
+
+# API Keys
+gemini_api_key       = "YOUR_GEMINI_API_KEY"  # Replace with your actual key
+
+# Lambda Configuration
+lambda_memory_size   = 512
+lambda_timeout       = 300
+lambda_python_runtime = "python3.11"
+
+# Step Functions
+enable_step_functions = true
+step_function_name    = "hrim-workflow" 

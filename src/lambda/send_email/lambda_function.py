@@ -293,7 +293,9 @@ def lambda_handler(event, context):
         logger.info("Preparing email")
         ses_client = boto3.client('ses')
         
-        sender_email = os.environ.get('SENDER_EMAIL', 'desaiaditya2710@gmail.com')
+        # Always use the verified sender email to avoid MessageRejected errors
+        sender_email = 'desaiaditya2710@gmail.com'
+        logger.info(f"Using verified sender email: {sender_email}")
         
         # Create email subject
         subject = f"Your Personalized Wellness Plan - {client_name}"

@@ -1,14 +1,15 @@
 """
 Format prompt lambda function.
 
-This function prepares the client data for the Gemini API call by formatting it
-into a detailed prompt that will generate a personalized wellness plan.
+This function prepares the client data for the Gemini API call by retrieving
+the standard prompt template and preparing it alongside the client data.
 """
 
 import json
 import os
 import logging
 import sys
+import boto3
 
 # Add parent directory to path so we can import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,148 +19,44 @@ import utils
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-def format_gemini_prompt(client_data):
+# Define S3 buckets or import from utils
+INPUT_BUCKET = os.environ.get('INPUT_BUCKET', 'hrim-input-data')
+PROMPT_FILE_KEY = os.environ.get('PROMPT_FILE_KEY', 'templates/prompt.txt')
+
+def get_standard_prompt():
     """
-    Format client data into a prompt for the Gemini API.
+    Retrieve the standard prompt template from S3.
+    
+    Returns:
+        The prompt text from the file
+    """
+    try:
+        # Initialize the S3 client
+        s3_client = boto3.client('s3')
+        
+        # Get the prompt file from S3
+        response = s3_client.get_object(Bucket=INPUT_BUCKET, Key=PROMPT_FILE_KEY)
+        prompt_text = response['Body'].read().decode('utf-8')
+        logger.info(f"Successfully retrieved prompt template from {INPUT_BUCKET}/{PROMPT_FILE_KEY}")
+        
+        return prompt_text
+    except Exception as e:
+        logger.error(f"Error retrieving prompt template: {str(e)}")
+        # If we can't retrieve the template, raise an exception (critical error)
+        raise
+
+def format_client_data(client_data):
+    """
+    Format client data into a structured JSON document for Gemini API.
     
     Args:
         client_data: Dict containing client data
         
     Returns:
-        Formatted prompt string
+        Formatted client data string in JSON format
     """
-    # Extract client data, defaulting to "Not provided" for missing fields
-    full_name = client_data.get('Full Name', 'Not provided')
-    email = client_data.get('Email', 'Not provided')
-    dob = client_data.get('Date of Birth', 'Not provided')
-    gender = client_data.get('Gender', 'Not provided')
-    height = client_data.get('Height', 'Not provided')
-    weight = client_data.get('Weight', 'Not provided')
-    occupation = client_data.get('Occupation', 'Not provided')
-    medical_conditions = client_data.get('Medical Conditions', 'None')
-    allergies = client_data.get('Allergies or Sensitivities', 'None')
-    medications = client_data.get('Current Medications', 'None')
-    dietary_preference = client_data.get('Dietary Preference', 'Vegan')  # Default to Vegan
-    meals_per_day = client_data.get('Meals per Day', '3')
-    meal_times = client_data.get('Usual Meal Times', 'Not provided')
-    cuisine = client_data.get('Cuisine Preference', 'Indian')  # Default to Indian
-    foods_enjoy = client_data.get('Foods You Enjoy', 'Not provided')
-    foods_dislike = client_data.get('Foods You Dislike', 'Not provided')
-    activity_level = client_data.get('Activity Level', 'Not provided')
-    exercise = client_data.get('Current Exercise Routine', 'Not provided')
-    sleep = client_data.get('Sleep Pattern', 'Not provided')
-    stress = client_data.get('Stress Level', 'Not provided')
-    water = client_data.get('Daily Water Intake', 'Not provided')
-    wellness_goals = client_data.get('Wellness Goals', 'Not provided')
-    weight_goal = client_data.get('Weight Management Goal', 'Not provided')
-    energy_concerns = client_data.get('Energy Level Concerns', 'Not provided')
-    food_budget = client_data.get('Food Budget', 'Not provided')
-    cooking_time = client_data.get('Available Cooking Time', 'Not provided')
-    household_size = client_data.get('Household Size', 'Not provided')
-    previous_plans = client_data.get('Previous Diet Plans', 'None')
-    additional_info = client_data.get('Additional Information', 'None')
-    
-    # Construct the prompt with a detailed persona and instructions
-    prompt = f"""
-You are an experienced Clinical Dietician with over 25 years of experience, specializing in Indian vegan nutrition and holistic wellness. You have a deep understanding of US FDA guidelines and Indian cultural context for food and lifestyle recommendations.
-
-# CLIENT INFORMATION:
-
-## Personal Info:
-- Full Name: {full_name}
-- Date of Birth: {dob}
-- Gender: {gender}
-- Height: {height}
-- Weight: {weight}
-- Occupation: {occupation}
-
-## Medical:
-- Conditions: {medical_conditions}
-- Allergies/Sensitivities: {allergies}
-- Current Medications: {medications}
-
-## Diet Habits:
-- Dietary Preference: {dietary_preference}
-- Meals per Day: {meals_per_day}
-- Usual Meal Times: {meal_times}
-- Cuisine Preference: {cuisine}
-- Foods Enjoyed: {foods_enjoy}
-- Foods Disliked: {foods_dislike}
-
-## Lifestyle:
-- Activity Level: {activity_level}
-- Current Exercise: {exercise}
-- Sleep Pattern: {sleep}
-- Stress Level: {stress}
-- Daily Water Intake: {water}
-
-## Other Details:
-- Wellness Goals: {wellness_goals}
-- Weight Management Goal: {weight_goal}
-- Energy Level Concerns: {energy_concerns}
-- Food Budget: {food_budget}
-- Available Cooking Time: {cooking_time}
-- Household Size: {household_size}
-- Previous Diet Plans: {previous_plans}
-- Additional Information: {additional_info}
-
-# DELIVERABLES:
-
-Based on the above client information, create a comprehensive 4-week Indian vegan wellness and diet plan with the following components:
-
-1. **4-Week Meal Plan** - Format each week in a clear tabular structure with:
-   - Breakfast, Lunch, Dinner, and Snacks for each day of the week
-   - Simple, quick-to-prepare meals (matching their Available Cooking Time)
-   - Include quantities for one person and for family (multiply servings as needed)
-   - Focus on Indian vegan options with local, seasonal ingredients
-   - Ensure nutritional balance meeting their goals
-
-2. **Weekly Daily Routine Chart** - Include:
-   - Wake-up routine
-   - Meal timings (matching their usual meal times)
-   - Recommended physical activities (appropriate for their activity level)
-   - Relaxation/stress management practices
-   - Hydration schedule
-   - Sleep routine
-   - Present this as a structured daily timeline
-
-3. **Weekly Grocery Lists** - For each week:
-   - Organized by category (vegetables, fruits, grains, legumes, etc.)
-   - Include exact quantities needed
-   - Focus on affordable options (matching their food budget)
-   - Include Indian names of ingredients when relevant
-   - Alternative options for hard-to-find ingredients
-
-4. **DOs & DON'Ts** - Provide:
-   - At least 10 specific "DO" recommendations
-   - At least 10 specific "DON'T" warnings
-   - These should be personalized to their goals, conditions, and preferences
-
-5. **Stress & Balance Tips** - For each week:
-   - 3-5 specific mindfulness or stress management techniques
-   - Simple yoga practices or breathing exercises
-   - Mental wellness suggestions
-   - Lifestyle adjustments
-
-6. **Summary & Follow-up** - Conclude with:
-   - Overview of how this plan addresses their specific goals
-   - Expected timeline for results
-   - Recommendations for progress tracking
-   - Suggestions for long-term sustainability
-
-Format your response in clear, structured Markdown with headings, lists, and tables for readability.
-
-DO NOT:
-- Include non-vegan ingredients
-- Propose unrealistic changes to their lifestyle
-- Include generic, non-personalized advice
-- Skip any of the required sections
-- Ask follow-up questions (use all information as provided)
-
-Remember: This is a professional wellness plan for a real client. Make it detailed, practical, and specifically tailored to their needs and constraints.
-"""
-    
-    return prompt
+    # Just return the serialized client data
+    return json.dumps(client_data, indent=2)
 
 def lambda_handler(event, context):
     """
@@ -196,14 +93,17 @@ def lambda_handler(event, context):
         # Update job status
         utils.update_job_status(job_id, utils.JobStatus.FORMATTING_PROMPT)
         
-        # Format the prompt
-        prompt = format_gemini_prompt(client_data)
+        # Get the standard prompt template
+        prompt = get_standard_prompt()
         
-        # Store the formatted prompt in S3
+        # Store the standard prompt and client data (separately) in S3
         prompt_key = f"jobs/{job_id}/prompt.txt"
-        utils.write_to_s3(utils.OUTPUT_BUCKET, prompt_key, prompt, 'text/plain')
+        client_data_key = f"jobs/{job_id}/client_data.json"
         
-        logger.info(f"Prompt formatted and stored for job: {job_id}")
+        utils.write_to_s3(utils.OUTPUT_BUCKET, prompt_key, prompt, 'text/plain')
+        utils.write_to_s3(utils.OUTPUT_BUCKET, client_data_key, json.dumps(client_data), 'application/json')
+        
+        logger.info(f"Prompt template and client data stored for job: {job_id}")
         
         # Prepare result for next step
         result = {
@@ -211,6 +111,7 @@ def lambda_handler(event, context):
             'prompt': prompt,
             'prompt_key': prompt_key,
             'client_data': client_data,
+            'client_data_key': client_data_key,
             'status': utils.JobStatus.CALLING_AI
         }
         

@@ -74,6 +74,7 @@ resource "aws_lambda_function" "format_prompt" {
       JOB_TABLE_NAME = var.dynamodb_table_name
       INPUT_BUCKET   = var.input_bucket_name
       OUTPUT_BUCKET  = var.output_bucket_name
+      PROMPT_FILE_KEY = "templates/prompt.txt"
     }
   }
   

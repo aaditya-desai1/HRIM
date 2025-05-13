@@ -213,7 +213,40 @@ main() {
     package_lambdas
     deploy_terraform
     
-    echo -e "${GREEN}===== Deployment completed =====${NC}"
+    echo "Terraform apply completed successfully."
+
+    # Upload the prompt template to S3
+    echo "Uploading prompt template to S3..."
+    BUCKET_NAME=$(terraform -chdir=terraform output -raw input_bucket_name 2>/dev/null || echo "hrim-input-data")
+    ./upload_prompt_template.sh "$BUCKET_NAME"
+
+    # Try to get the region from Terraform
+    AWS_REGION=$(terraform -chdir=terraform output -raw aws_region 2>/dev/null)
+    if [ -n "$AWS_REGION" ]; then
+        echo "Setting PROMPT_FILE_KEY environment variable automatically..."
+        ./update_prompt_env_var.sh --region "$AWS_REGION"
+        if [ $? -eq 0 ]; then
+            echo "✅ Environment variable set successfully!"
+        else
+            echo "⚠️ Could not automatically set the environment variable."
+            echo "Please set it manually as described below."
+        fi
+    else
+        echo "⚠️ Could not automatically determine AWS region from Terraform."
+        echo "Please set the environment variable manually as described below."
+    fi
+
+    echo ""
+    echo "IMPORTANT: Make sure the format_prompt Lambda function has the correct environment variable:"
+    echo "PROMPT_FILE_KEY=templates/prompt.txt"
+    echo ""
+    echo "You can set this environment variable by:"
+    echo "1. Running the update_prompt_env_var.sh script with your AWS region:"
+    echo "   ./update_prompt_env_var.sh --region YOUR_AWS_REGION"
+    echo "2. Or manually in the AWS Lambda console: https://console.aws.amazon.com/lambda"
+    echo ""
+
+    echo "Deployment completed successfully!"
 }
 
 # Execute main function

@@ -39,48 +39,112 @@ def standardize_form_data(form_data):
     
     # Map the incoming form fields to our expected format
     field_mapping = {
-        'Full Name': 'Full Name',
+        # Section 1: Email
         'Email': 'Email',
+        
+        # Section 2: Personal Details
+        'Full Name': 'Full Name',
         'DOB': 'Date of Birth',
+        'Date of Birth': 'Date of Birth',  # For backward compatibility
         'Gender': 'Gender',
-        'Height': 'Height',
-        'Weight': 'Weight',
+        'WhatsApp Contact Number': 'Phone Number',
+        'Phone Number': 'Phone Number',  # For backward compatibility
+        'Address': 'Address',
+        'City': 'City',
+        'PIN': 'PIN Code',
+        'State': 'State',
+        'Country': 'Country',
         'Occupation': 'Occupation',
-        'Medical Conditions': 'Medical Conditions',
-        'Allergies or Sensitivities': 'Allergies or Sensitivities',
-        'Current Medications': 'Current Medications',
-        'Dietary Preference': 'Dietary Preference',
-        'Meals per Day': 'Meals per Day',
-        'Cuisine Preference': 'Cuisine Preference',
-        'Food You Enjoy': 'Foods You Enjoy',
-        'Foods you Dislike': 'Foods You Dislike',
-        'Activity Level': 'Activity Level',
-        'Current Exercise Routine': 'Current Exercise Routine',
-        'Sleep Pattern': 'Sleep Pattern',
+        'Marital Status': 'Marital Status',
+        
+        # Section 3: Demographic and Lifestyle Information
+        'Height (in cm)': 'Height',
+        'Height': 'Height',  # For backward compatibility
+        'Current Weight (in kg)': 'Weight',
+        'Weight': 'Weight',  # For backward compatibility
+        'Target Weight (if any)': 'Target Weight',
+        'Primary Health Goals': 'Wellness Goals',
+        
+        # Section 4: Medical History
+        'Do you have any existing medical conditions?': 'Has Medical Conditions',
+        'If yes, please specify medical conditions.': 'Medical Conditions',
+        'Medical Conditions': 'Medical Conditions',  # For backward compatibility
+        'Are you currently on any medications?': 'On Medications',
+        'If yes, please specify medications': 'Current Medications',
+        'Current Medications': 'Current Medications',  # For backward compatibility
+        'Any allergies (food or otherwise)?': 'Has Allergies',
+        'If yes, Please specify allergies.': 'Allergies or Sensitivities',
+        'Allergies or Sensitivities': 'Allergies or Sensitivities',  # For backward compatibility
+        'Family Medical History: (e.g. diabetes, heart disease)': 'Family Medical History',
+        
+        # Section 5: Daily Routine & Lifestyle
+        'Wake-Up Time': 'Wake-Up Time',
+        'Sleep Time': 'Sleep Time',
+        'Average Hours of Sleep': 'Sleep Hours',
+        'Sleep Pattern': 'Sleep Pattern',  # For backward compatibility
+        'Work Schedule': 'Work Schedule',
+        'Physical Activity Level': 'Activity Level',
+        'Activity Level': 'Activity Level',  # For backward compatibility
+        'Exercise Routine (if any)': 'Current Exercise Routine',
+        'Current Exercise Routine': 'Current Exercise Routine',  # For backward compatibility
         'Stress Level': 'Stress Level',
-        'Daily Water Intake': 'Daily Water Intake',
-        'Wellness Goals': 'Wellness Goals',
-        'Weight Management Goal': 'Weight Management Goal',
-        'Energy Level Concerns': 'Energy Level Concerns',
+        'Screen Time per Day (in Hours)': 'Screen Time',
+        
+        # Section 6: Dietary Preferences and Habits
+        'Dietary Preference': 'Dietary Preference',
+        'Any Dietary Restrictions?': 'Has Dietary Restrictions',
+        'If yes, Please specify Dietary Restrictions': 'Dietary Restrictions',
+        'Meals per Day': 'Meals per Day',
+        'Snacking Habit': 'Snacking Habit',
+        'Water Intake Per Day (in Liters)': 'Daily Water Intake',
+        'Daily Water Intake': 'Daily Water Intake',  # For backward compatibility
+        'Consumption of Caffeine (Tea/Coffee) Cups Per Day': 'Caffeine Consumption',
+        'Frequency of Eating Out': 'Eating Out Frequency',
+        'Usual Meal Times': 'Usual Meal Times',  # For backward compatibility
+        'Cuisine Preference': 'Cuisine Preference',  # For backward compatibility
+        'Foods You Enjoy': 'Foods You Enjoy',  # For backward compatibility
+        'Food You Enjoy': 'Foods You Enjoy',  # For backward compatibility
+        'Foods You Dislike': 'Foods You Dislike',  # For backward compatibility
+        'Foods you Dislike': 'Foods You Dislike',  # For backward compatibility
+        
+        # Section 7: Mental and Emotional Well-being
+        'How often do you feel stressed?': 'Stress Frequency',
+        'Do you practice any relaxation techniques?': 'Uses Relaxation Techniques',
+        'If yes, Specify relaxation techniques.': 'Relaxation Techniques',
+        'Hobbies and Leisure Activities (Describe)': 'Hobbies',
+        
+        # Section 8: Additional Information
+        'Any specif concerns or goals you would like to address?': 'Specific Concerns',
+        'Have you followed any diet or fitness plan before?': 'Previous Plans Experience',
+        'If yes, what type and what were the results?': 'Previous Diet Plans',
+        'Previous Diet Plans': 'Previous Diet Plans',  # For backward compatibility
         'Food Budget': 'Food Budget',
-        'Available Cooking Time': 'Available Cooking Time',
-        'Household Size': 'Household Size',
-        'Previous Diet Plans': 'Previous Diet Plans',
-        'Additional Information': 'Additional Information'
+        'Available Cooking Time': 'Available Cooking Time',  # For backward compatibility
+        'Household Size': 'Household Size',  # For backward compatibility
+        'Additional Information': 'Additional Information',
+        'Health Goals': 'Wellness Goals',  # For backward compatibility
+        'Wellness Goals': 'Wellness Goals',  # For backward compatibility
+        'Weight Management Goal': 'Weight Management Goal',  # For backward compatibility
+        'Energy Level Concerns': 'Energy Level Concerns'  # For backward compatibility
     }
     
-    # Process meal times
-    meal_times = []
-    if 'Usual Meal Times (Breakfast)' in form_data:
-        meal_times.append(f"Breakfast {form_data['Usual Meal Times (Breakfast)']}")
-    if 'Usual Meal Times (Lunch)' in form_data:
-        meal_times.append(f"Lunch {form_data['Usual Meal Times (Lunch)']}")
-    if 'Usual Meal Times (Dinner)' in form_data:
-        meal_times.append(f"Dinner {form_data['Usual Meal Times (Dinner)']}")
-    
-    # Add combined meal times
-    if meal_times:
-        standardized['Usual Meal Times'] = ', '.join(meal_times)
+    # Process meal times if they come in separate fields (for backward compatibility)
+    if ('Usual Meal Times' not in form_data and 
+        ('Usual Meal Times (Breakfast)' in form_data or 
+         'Usual Meal Times (Lunch)' in form_data or 
+         'Usual Meal Times (Dinner)' in form_data)):
+        
+        meal_times = []
+        if 'Usual Meal Times (Breakfast)' in form_data:
+            meal_times.append(f"Breakfast {form_data['Usual Meal Times (Breakfast)']}")
+        if 'Usual Meal Times (Lunch)' in form_data:
+            meal_times.append(f"Lunch {form_data['Usual Meal Times (Lunch)']}")
+        if 'Usual Meal Times (Dinner)' in form_data:
+            meal_times.append(f"Dinner {form_data['Usual Meal Times (Dinner)']}")
+        
+        # Add combined meal times
+        if meal_times:
+            standardized['Usual Meal Times'] = ', '.join(meal_times)
     
     # Map fields according to our mapping
     for form_key, std_key in field_mapping.items():

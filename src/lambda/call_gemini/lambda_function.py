@@ -138,12 +138,13 @@ def get_secret_value(secret_name: str) -> Dict[str, Any]:
         logger.error(f"Error getting secret {secret_name}: {str(e)}")
         return {}
 
-def call_gemini_api(prompt: str, model_name: Optional[str] = None) -> str:
+def call_gemini_api(prompt: str, client_data: dict, model_name: Optional[str] = None) -> str:
     """
-    Call the Gemini API with the formatted prompt using direct REST API calls.
+    Call the Gemini API with the prompt template and client data.
     
     Args:
-        prompt: The formatted prompt
+        prompt: The standard prompt template
+        client_data: The client data dictionary
         model_name: The model name to use
         
     Returns:
@@ -172,13 +173,19 @@ def call_gemini_api(prompt: str, model_name: Optional[str] = None) -> str:
         # API endpoint
         url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={api_key}"
         
+        # Format the client data as a clean JSON string
+        client_data_str = json.dumps(client_data, indent=2)
+        
+        # Our complete message to Gemini includes both the prompt and the client data
+        combined_message = f"{prompt}\n\n# CLIENT DATA (JSON):\n```json\n{client_data_str}\n```"
+        
         # Request payload
         payload = {
             "contents": [
                 {
                     "parts": [
                         {
-                            "text": prompt
+                            "text": combined_message
                         }
                     ]
                 }
@@ -222,7 +229,7 @@ def lambda_handler(event, context):
     Lambda handler function.
     
     Args:
-        event: The event dict containing job_id and prompt
+        event: The event dict containing job_id, prompt, and client_data
         context: Lambda context
         
     Returns:
@@ -244,8 +251,8 @@ def lambda_handler(event, context):
         
         logger.info(f"Processing Gemini API call for job: {job_id}")
         
-        if not job_id or not prompt:
-            logger.error("Missing required parameters: job_id or prompt")
+        if not job_id or not prompt or not client_data:
+            logger.error("Missing required parameters: job_id, prompt, or client_data")
             return {
                 'statusCode': 400,
                 'body': json.dumps({'error': 'Missing required parameters'})
@@ -254,8 +261,8 @@ def lambda_handler(event, context):
         # Update job status
         update_job_status(job_id, JobStatus.CALLING_AI)
         
-        # Call Gemini API
-        response = call_gemini_api(prompt)
+        # Call Gemini API with both prompt and client data
+        response = call_gemini_api(prompt, client_data)
         
         # Store the response in S3
         response_key = f"jobs/{job_id}/gemini_response.md"

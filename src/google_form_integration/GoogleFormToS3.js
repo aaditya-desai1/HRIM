@@ -36,8 +36,8 @@ function onFormSubmit(e) {
       const answer = itemResponse.getResponse();
       
       // Format DOB if it's in array format (month, day, year)
-      if (question === "DOB" && Array.isArray(answer)) {
-        formData[question] = formatDate(answer);
+      if (question === "Date of Birth" && Array.isArray(answer)) {
+        formData["DOB"] = formatDate(answer);
       } else {
         formData[question] = answer;
       }
@@ -135,37 +135,69 @@ function sendToAWS(jsonData) {
  */
 function testSendToAWS() {
   const testData = {
-    "Full Name": "Test User",
-    "Email": "test@example.com",
-    "DOB": "1990-01-01",
+    // SECTION 1: Email
+    "Email": "kavita.kapoor@example.com",
+    
+    // SECTION 2: Personal Details
+    "Full Name": "Kavita Kapoor",
+    "DOB": "1975-05-15",
     "Gender": "Female",
-    "Height": "165 cm",
-    "Weight": "60 kg",
-    "Occupation": "Software Engineer",
-    "Medical Conditions": "None",
-    "Allergies or Sensitivities": "None",
-    "Current Medications": "None",
-    "Dietary Preference": "Vegan",
-    "Meals per Day": "3",
-    "Usual Meal Times (Breakfast)": "8:00 AM",
-    "Usual Meal Times (Lunch)": "1:00 PM",
-    "Usual Meal Times (Dinner)": "7:00 PM",
-    "Cuisine Preference": "Indian",
-    "Food You Enjoy": "Lentils, rice, vegetables",
-    "Foods you Dislike": "Bitter gourd",
-    "Activity Level": "Moderate",
-    "Current Exercise Routine": "30 minute walk daily",
-    "Sleep Pattern": "11pm to 7am",
+    "WhatsApp Contact Number": "+919427981235",
+    "Address": "123 Wellness Avenue, Near City Center",
+    "City": "Surat",
+    "PIN": "395007",
+    "State": "Gujarat",
+    "Country": "India",
+    "Occupation": "Business Owner",
+    "Marital Status": "Married",
+    
+    // SECTION 3: Demographic and Lifestyle Information
+    "Height (in cm)": "165",
+    "Current Weight (in kg)": "58",
+    "Target Weight (if any)": "55",
+    "Primary Health Goals": "Weight Loss, Improve Fitness & Stamina, Boost Immunity",
+    
+    // SECTION 4: Medical History
+    "Do you have any existing medical conditions?": "Yes",
+    "If yes, please specify medical conditions.": "Occasional migraines, mild hypertension",
+    "Are you currently on any medications?": "Yes",
+    "If yes, please specify medications": "Low-dose blood pressure medication",
+    "Any allergies (food or otherwise)?": "Yes",
+    "If yes, Please specify allergies.": "Dust, mild gluten sensitivity",
+    "Family Medical History: (e.g. diabetes, heart disease)": "Father had diabetes, mother has hypothyroidism",
+    
+    // SECTION 5: Daily Routine & Lifestyle
+    "Wake-Up Time": "6:30 AM",
+    "Sleep Time": "10:30 PM",
+    "Average Hours of Sleep": "8",
+    "Work Schedule": "Fixed, Remote",
+    "Physical Activity Level": "Lightly Active (Light Exercise or Office Work)",
+    "Exercise Routine (if any)": "30 minute walk in the morning, yoga twice a week",
     "Stress Level": "Moderate",
-    "Daily Water Intake": "2 liters",
-    "Wellness Goals": "Increase energy, maintain weight",
-    "Weight Management Goal": "Maintain current weight",
-    "Energy Level Concerns": "Low energy in afternoons",
+    "Screen Time per Day (in Hours)": "6",
+    
+    // SECTION 6: Dietary Preferences and Habits
+    "Dietary Preference": "Vegetarian",
+    "Any Dietary Restrictions?": "Yes",
+    "If yes, Please specify Dietary Restrictions": "Trying to avoid gluten and excess dairy",
+    "Meals per Day": "3",
+    "Snacking Habit": "Occasionally",
+    "Water Intake Per Day (in Liters)": "1.5",
+    "Consumption of Caffeine (Tea/Coffee) Cups Per Day": "2",
+    "Frequency of Eating Out": "Weekly",
+    
+    // SECTION 7: Mental and Emotional Well-being
+    "How often do you feel stressed?": "Sometimes",
+    "Do you practice any relaxation techniques?": "Yes",
+    "If yes, Specify relaxation techniques.": "Deep breathing exercises, evening meditation",
+    "Hobbies and Leisure Activities (Describe)": "Reading, gardening, occasional painting",
+    
+    // SECTION 8: Additional Information
+    "Any specif concerns or goals you would like to address?": "I would like to manage my stress better and establish a sustainable healthy eating routine that fits my busy schedule",
+    "Have you followed any diet or fitness plan before?": "Yes",
+    "If yes, what type and what were the results?": "Tried intermittent fasting for 3 months. Lost 3kg but couldn't maintain it long-term",
     "Food Budget": "Medium",
-    "Available Cooking Time": "30-45 minutes per meal",
-    "Household Size": "2",
-    "Previous Diet Plans": "None",
-    "Additional Information": "I work long hours and need simple recipes"
+    "Additional Information": "I travel for work once a month for about a week. Would need portable diet options during those times. Also interested in meal prep ideas for busy weekdays."
   };
   
   const jsonData = JSON.stringify(testData);

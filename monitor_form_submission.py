@@ -16,6 +16,7 @@ import random
 import argparse
 import boto3
 import requests
+import os
 from datetime import datetime
 
 def parse_arguments():
@@ -38,6 +39,10 @@ def generate_test_data(client_name=None, client_email=None, use_simulator=False)
         name_suffix = ["Smith", "Jones", "Williams", "Brown", "Miller", "Davis"]
         client_name = f"{random.choice(name_prefix)} {random.choice(name_suffix)}"
     
+    # Always set sender email for all tests
+    os.environ['SENDER_EMAIL'] = 'desaiaditya2710@gmail.com'
+    print(f"Setting sender email to: {os.environ['SENDER_EMAIL']}")
+    
     if not client_email or use_simulator:
         # Use SES mailbox simulator instead of example.com
         client_email = "success@simulator.amazonses.com"
@@ -46,37 +51,107 @@ def generate_test_data(client_name=None, client_email=None, use_simulator=False)
         print(f"Using provided email address: {client_email}")
     
     return {
-        "Full Name": client_name,
+        # SECTION 1: Email
         "Email": client_email,
+        
+        # SECTION 2: Personal Details
+        "Full Name": client_name,
         "DOB": "1990-01-01",
         "Gender": "Female" if random.random() > 0.5 else "Male",
-        "Height": f"{random.randint(150, 190)} cm",
-        "Weight": f"{random.randint(50, 90)} kg",
-        "Occupation": "Software Engineer",
-        "Medical Conditions": "None",
-        "Allergies or Sensitivities": "None",
-        "Current Medications": "None",
-        "Dietary Preference": random.choice(["Vegan", "Vegetarian", "Omnivore", "Pescatarian"]),
-        "Meals per Day": str(random.randint(3, 5)),
-        "Usual Meal Times (Breakfast)": "8:00 AM",
-        "Usual Meal Times (Lunch)": "1:00 PM",
-        "Usual Meal Times (Dinner)": "7:00 PM",
-        "Cuisine Preference": random.choice(["Mediterranean", "Asian", "Indian", "Mexican"]),
-        "Food You Enjoy": "Fresh vegetables, fruits, whole grains, nuts",
-        "Foods you Dislike": "Processed foods",
-        "Activity Level": random.choice(["Low", "Moderate", "High"]),
-        "Current Exercise Routine": "30 minute walk daily",
-        "Sleep Pattern": "11pm to 7am",
+        "WhatsApp Contact Number": f"+91{random.randint(7000000000, 9999999999)}",
+        "Address": f"{random.randint(1, 999)} Wellness Avenue, Sector {random.randint(1, 50)}",
+        "City": random.choice(["Surat", "Mumbai", "Delhi", "Bangalore", "Chennai"]),
+        "PIN": f"{random.randint(100000, 999999)}",
+        "State": random.choice(["Gujarat", "Maharashtra", "Delhi", "Karnataka", "Tamil Nadu"]),
+        "Country": "India",
+        "Occupation": random.choice(["Software Engineer", "Doctor", "Teacher", "Business Owner", "Freelancer"]),
+        "Marital Status": random.choice(["Married", "Single", "Other"]),
+        
+        # SECTION 3: Demographic and Lifestyle Information
+        "Height (in cm)": str(random.randint(150, 190)),
+        "Current Weight (in kg)": str(random.randint(50, 90)),
+        "Target Weight (if any)": str(random.randint(50, 90)),
+        "Primary Health Goals": ", ".join(random.sample([
+            "Weight Loss", "Weight Gain", "Manage Chronic Disease", 
+            "Improve Fitness & Stamina", "Boost Immunity", "Stress Management"
+        ], k=random.randint(1, 3))),
+        
+        # SECTION 4: Medical History
+        "Do you have any existing medical conditions?": random.choice(["Yes", "No"]),
+        "If yes, please specify medical conditions.": "None" if random.random() > 0.5 else random.choice([
+            "Occasional migraines", "Mild hypertension", "Type 2 diabetes", "Hypothyroidism"
+        ]),
+        "Are you currently on any medications?": random.choice(["Yes", "No"]),
+        "If yes, please specify medications": "None" if random.random() > 0.5 else random.choice([
+            "Blood pressure medication", "Thyroid medication", "Supplements only"
+        ]),
+        "Any allergies (food or otherwise)?": random.choice(["Yes", "No"]),
+        "If yes, Please specify allergies.": "None" if random.random() > 0.7 else random.choice([
+            "Dust", "Pollen", "Gluten sensitivity", "Lactose intolerance", "Nuts"
+        ]),
+        "Family Medical History: (e.g. diabetes, heart disease)": random.choice([
+            "No significant history", "Diabetes in family", "Hypertension in parents", 
+            "Father had heart disease", "Mother has hypothyroidism"
+        ]),
+        
+        # SECTION 5: Daily Routine & Lifestyle
+        "Wake-Up Time": f"{random.randint(5, 8)}:{random.choice(['00', '30'])} AM",
+        "Sleep Time": f"{random.randint(9, 11)}:{random.choice(['00', '30'])} PM",
+        "Average Hours of Sleep": str(random.randint(6, 9)),
+        "Work Schedule": ", ".join(random.sample(["Fixed", "Rotational", "Remote", "Field Work"], k=random.randint(1, 2))),
+        "Physical Activity Level": random.choice([
+            "Sedentary (Minimal Activity)", 
+            "Lightly Active (Light Exercise or Office Work)",
+            "Moderately Active (Regular Exercise 3-4 times a week)",
+            "Very Active (Intense Exercise or Physically Demanding Job)"
+        ]),
+        "Exercise Routine (if any)": random.choice([
+            "30 minute walk daily", "Yoga twice a week", "Gym 3-4 times a week",
+            "None currently", "Running 2-3 times a week"
+        ]),
         "Stress Level": random.choice(["Low", "Moderate", "High"]),
-        "Daily Water Intake": f"{random.randint(15, 30) / 10:.1f} liters",
-        "Wellness Goals": "Increase energy, improve focus",
-        "Weight Management Goal": random.choice(["Lose weight", "Maintain weight", "Gain weight"]),
-        "Energy Level Concerns": "Afternoon energy dip",
+        "Screen Time per Day (in Hours)": str(random.randint(2, 10)),
+        
+        # SECTION 6: Dietary Preferences and Habits
+        "Dietary Preference": random.choice(["Vegetarian", "Non-Vegetarian", "Vegan", "Mixed Diet (Veg + Non Veg)", "Gluten-free", "Jain"]),
+        "Any Dietary Restrictions?": random.choice(["Yes", "No"]),
+        "If yes, Please specify Dietary Restrictions": "None" if random.random() > 0.6 else random.choice([
+            "No onion and garlic", "Gluten-free", "Dairy-free", "No eggs", "Low sodium"
+        ]),
+        "Meals per Day": random.choice(["2", "3", "4", "More"]),
+        "Snacking Habit": random.choice(["Yes", "No", "Occasionally"]),
+        "Water Intake Per Day (in Liters)": f"{random.randint(15, 40) / 10:.1f}",
+        "Consumption of Caffeine (Tea/Coffee) Cups Per Day": str(random.randint(0, 5)),
+        "Frequency of Eating Out": random.choice(["Rarely", "Weekly", "Monthly", "Frequently"]),
+        
+        # SECTION 7: Mental and Emotional Well-being
+        "How often do you feel stressed?": random.choice(["Rarely", "Sometimes", "Often"]),
+        "Do you practice any relaxation techniques?": random.choice(["Yes", "No"]),
+        "If yes, Specify relaxation techniques.": "None" if random.random() > 0.5 else random.choice([
+            "Meditation", "Deep breathing exercises", "Yoga", "Mindfulness", "Walking in nature"
+        ]),
+        "Hobbies and Leisure Activities (Describe)": random.choice([
+            "Reading, gardening", "Music, movies", "Cooking, traveling", 
+            "Sports, video games", "Painting, crafts"
+        ]),
+        
+        # SECTION 8: Additional Information
+        "Any specif concerns or goals you would like to address?": random.choice([
+            "Would like to manage stress better and establish a sustainable routine",
+            "Need help with portion control and meal planning",
+            "Looking to increase energy levels throughout the day",
+            "Want to improve sleep quality and reduce screen time",
+            "Test submission for monitoring"
+        ]),
+        "Have you followed any diet or fitness plan before?": random.choice(["Yes", "No"]),
+        "If yes, what type and what were the results?": "None" if random.random() > 0.5 else random.choice([
+            "Tried intermittent fasting for 3 months with mixed results",
+            "Followed a keto diet but couldn't maintain it long-term",
+            "Did gym training for 6 months and saw good results",
+            "Tried various diets with limited success"
+        ]),
         "Food Budget": random.choice(["Low", "Medium", "High"]),
-        "Available Cooking Time": f"{random.randint(15, 60)} minutes per meal",
-        "Household Size": str(random.randint(1, 4)),
-        "Previous Diet Plans": "None",
-        "Additional Information": "Test submission for monitoring"
+        "Additional Information": "Test submission for monitoring. Please ignore this automated test."
     }
 
 def submit_form(api_endpoint, form_data):
@@ -191,6 +266,7 @@ def main():
     
     print("=== HRIM Form Submission Monitor ===")
     print(f"API Endpoint: {args.api_endpoint}")
+    print(f"Sender Email: {os.environ.get('SENDER_EMAIL', 'desaiaditya2710@gmail.com')}")
     
     # Generate test data
     form_data = generate_test_data(args.client_name, args.client_email, args.use_simulator)
@@ -204,12 +280,15 @@ def main():
         
         # Inform the user about the email
         print(f"\nThe wellness plan will be emailed to: {form_data['Email']}")
+        print(f"From sender address: {os.environ.get('SENDER_EMAIL', 'desaiaditya2710@gmail.com')}")
         print("Check your inbox (and spam folder) for the wellness plan email.")
         
         # If using a real email address, remind about verification
         if not form_data['Email'].endswith('@simulator.amazonses.com'):
             print("\nNOTE: If your AWS SES account is in sandbox mode, ensure both the sender")
             print("      and recipient email addresses are verified in SES.")
+        else:
+            print("\nNOTE: Using Amazon SES simulator for testing.")
     
     print("\n=== Monitoring Complete ===")
 

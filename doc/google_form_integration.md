@@ -13,6 +13,19 @@ The integration follows this workflow:
 5. S3 event triggers the HRIM workflow
 6. HRIM generates the wellness plan and delivers it to the client
 
+## Current Form Structure
+
+The current Google Form (as of May 2023) is available at:
+https://docs.google.com/forms/d/e/1FAIpQLScRfePeKf3gkXVrykQej6RHOBN42Paz7mT1_-pB1jl92Lu0kQ/viewform
+
+The form collects the following information:
+- **Basic Information**: Email, Full Name, Phone Number, Date of Birth, Gender, Height, Weight, City, Occupation
+- **Medical Information**: Medical Conditions, Allergies or Sensitivities, Current Medications
+- **Diet Preferences**: Dietary Preference, Meals per Day, Usual Meal Times, Cuisine Preference, Foods You Enjoy, Foods You Dislike
+- **Lifestyle**: Activity Level, Current Exercise Routine, Sleep Pattern, Stress Level, Daily Water Intake
+- **Goals and Constraints**: Health Goals, Weight Management Goal, Energy Level Concerns, Food Budget, Available Cooking Time, Household Size, Previous Diet Plans
+- **Additional Information**: Free text field for any other relevant details
+
 ## Setup Instructions
 
 ### 1. Deploy AWS Infrastructure
@@ -67,6 +80,9 @@ You can test the integration using the provided test script:
 # Install required dependencies
 pip install requests
 
+# Test the updated form submission locally
+python test_updated_form.py
+
 # Run the test script with your API Gateway URL
 python test_form_submission.py https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/v1/form-submission
 
@@ -109,10 +125,47 @@ If there are issues with the format of the data:
 
 ## Custom Field Mapping
 
-If you modify your Google Form, you may need to update the field mapping in the Lambda function. Edit the `standardize_form_data` function in `src/lambda/form_submission/lambda_function.py` to match your form fields.
+If you modify your Google Form, you'll need to update the field mapping in the Lambda function. Edit the `standardize_form_data` function in `src/lambda/form_submission/lambda_function.py` to match your form fields.
+
+Current field mapping (as of May 2023):
+```python
+field_mapping = {
+    'Full Name': 'Full Name',
+    'Email': 'Email',
+    'Phone Number': 'Phone Number',
+    'Date of Birth': 'Date of Birth',
+    'Gender': 'Gender',
+    'Height': 'Height',
+    'Weight': 'Weight',
+    'City': 'City',
+    'Occupation': 'Occupation',
+    'Medical Conditions': 'Medical Conditions',
+    'Allergies or Sensitivities': 'Allergies or Sensitivities',
+    'Current Medications': 'Current Medications',
+    'Dietary Preference': 'Dietary Preference',
+    'Meals per Day': 'Meals per Day',
+    'Usual Meal Times': 'Usual Meal Times',
+    'Cuisine Preference': 'Cuisine Preference',
+    'Foods You Enjoy': 'Foods You Enjoy',
+    'Foods You Dislike': 'Foods You Dislike',
+    'Activity Level': 'Activity Level',
+    'Current Exercise Routine': 'Current Exercise Routine',
+    'Sleep Pattern': 'Sleep Pattern',
+    'Stress Level': 'Stress Level',
+    'Daily Water Intake': 'Daily Water Intake',
+    'Health Goals': 'Wellness Goals',
+    'Weight Management Goal': 'Weight Management Goal',
+    'Energy Level Concerns': 'Energy Level Concerns',
+    'Food Budget': 'Food Budget',
+    'Available Cooking Time': 'Available Cooking Time',
+    'Household Size': 'Household Size',
+    'Previous Diet Plans': 'Previous Diet Plans',
+    'Additional Information': 'Additional Information'
+}
+```
 
 ## Security Considerations
 
 - The API Gateway endpoint is publicly accessible. Consider adding authentication if needed.
 - Google Apps Script stores your form data. Review Google's privacy policies.
-- The integration transmits client health data. Ensure compliance with relevant regulations (HIPAA, GDPR, etc.). 
+- The integration transmits client health data. Ensure compliance with relevant regulations (HIPAA, GDPR, etc.).

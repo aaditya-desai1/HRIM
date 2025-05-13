@@ -296,8 +296,9 @@ def send_email_with_attachment(
         A tuple containing (success, message_id)
     """
     try:
-        # Get sender email from environment variable
-        sender_email = os.environ.get('SENDER_EMAIL', 'noreply@example.com')
+        # Always use the verified sender email to avoid MessageRejected errors
+        sender_email = 'desaiaditya2710@gmail.com'
+        logger.info(f"Using verified sender email: {sender_email}")
         
         # Create a multipart email
         msg = MIMEMultipart('mixed')
@@ -336,7 +337,7 @@ def send_email_with_attachment(
         )
         
         message_id = response.get('MessageId')
-        logger.info(f"Email sent to {recipient} with message ID: {message_id}")
+        logger.info(f"Email sent from {sender_email} to {recipient} with message ID: {message_id}")
         
         return True, message_id
     except Exception as e:

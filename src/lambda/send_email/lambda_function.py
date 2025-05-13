@@ -3,8 +3,8 @@ import os
 import sys
 import logging
 import boto3
-from botocore.exceptions import ClientError
 import base64
+from botocore.exceptions import ClientError
 
 # Add parent directory to Python path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,6 +21,7 @@ s3 = boto3.client('s3')
 # Constants
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'noreply@example.com')
 EMAIL_SUBJECT = os.environ.get('EMAIL_SUBJECT', 'Your Personalized Wellness Plan')
+DEBUG_MODE = os.environ.get('DEBUG_MODE', 'false').lower() == 'true'
 
 def lambda_handler(event, context):
     """
@@ -42,6 +43,9 @@ def lambda_handler(event, context):
         output_s3_key = event.get('output_s3_key')
         presigned_url = event.get('presigned_url')
         
+        # For testing - if specifically passing an email address in the event
+        test_recipient = event.get('test_recipient')
+        
         if not all([job_id, output_s3_bucket, output_s3_key]):
             error_message = "Missing required parameters in event"
             logger.error(error_message)
@@ -55,7 +59,7 @@ def lambda_handler(event, context):
         
         # Get job details for client info
         job = utils.get_job(job_id)
-        client_email = job.get('client_email')
+        client_email = test_recipient or job.get('client_email')
         client_name = job.get('client_name', 'Valued Client')
         
         if not client_email or client_email == 'pending_extraction' or client_email == 'missing@example.com':
@@ -130,6 +134,20 @@ Thank you for choosing our wellness planning service!
 </html>
             """
             
+            # If in debug mode, log additional information
+            if DEBUG_MODE:
+                logger.info(f"Sending email from: {SENDER_EMAIL}")
+                logger.info(f"Sending email to: {client_email}")
+                logger.info(f"Email subject: {EMAIL_SUBJECT}")
+                logger.info(f"PDF attachment size: {len(pdf_data)} bytes")
+                
+                # Check SES sending limits
+                try:
+                    quota = ses.get_send_quota()
+                    logger.info(f"SES quota - Max24HourSend: {quota['Max24HourSend']}, SentLast24Hours: {quota['SentLast24Hours']}")
+                except Exception as quota_error:
+                    logger.warning(f"Could not retrieve SES quota: {str(quota_error)}")
+            
             # Create raw email message (with attachment)
             response = ses.send_raw_email(
                 Source=SENDER_EMAIL,
@@ -152,7 +170,21 @@ Thank you for choosing our wellness planning service!
             email_message_id = response.get('MessageId', 'Unknown')
             
         except ClientError as e:
-            error_message = f"Error sending email: {str(e)}"
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_message = e.response.get('Error', {}).get('Message', str(e))
+            
+            # Provide more detailed error messages for common SES issues
+            if error_code == 'MessageRejected':
+                error_message = f"Email rejected: {error_message}. Check if your sending address is verified in SES."
+            elif error_code == 'MailFromDomainNotVerified':
+                error_message = f"Domain not verified: {error_message}. Verify your domain in SES."
+            elif error_code == 'EmailAddressNotVerified':
+                error_message = f"Email address not verified: {error_message}. Verify your email in SES."
+            elif error_code == 'Throttling':
+                error_message = f"SES throttling: {error_message}. Check your sending limits."
+            else:
+                error_message = f"Error sending email ({error_code}): {error_message}"
+                
             logger.error(error_message)
             email_status = "FAILED"
             email_message_id = None

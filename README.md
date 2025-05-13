@@ -63,6 +63,74 @@ Create a `.env` file with the following variables:
 - `WHATSAPP_API_KEY`: Your WhatsApp Business API key
 - Other AWS configuration is handled through IAM roles
 
+## Local Testing Without External APIs
+
+For local development and testing without requiring actual API keys or AWS resources, you can use the provided test tools:
+
+### Simple Workflow Test
+
+The `test_workflow.py` script provides a simple end-to-end test of the workflow logic without requiring any external services:
+
+```bash
+./test_workflow.py
+```
+
+This script:
+1. Loads the sample client data from `test-data/sample-form-submission.json`
+2. Simulates the workflow steps with mock implementations
+3. Generates a text file representing the PDF output
+4. Simulates delivery notifications
+
+### Simplified Testing With Core Functionality
+
+For an even simpler test that focuses just on the core functionality without Lambda functions, use the `simple_test.py` script:
+
+```bash
+python3 simple_test.py
+```
+
+This script:
+1. Loads the sample client data
+2. Formats a prompt for wellness plan generation
+3. Simulates an OpenAI API response
+4. Generates an actual PDF (using xhtml2pdf)
+5. Creates mock email and WhatsApp delivery files
+6. Saves all output to the `test_output` directory for verification
+
+This is the recommended approach for quickly testing the core functionality without dealing with AWS service mocks.
+
+### Testing with Real AWS SES
+
+AWS SES offers a free tier that allows 62,000 outgoing messages per month when sent from an Amazon EC2 instance. To test email delivery with real AWS SES:
+
+1. Verify your sender email address in the AWS SES console
+2. Configure your AWS credentials using `aws configure`
+3. Set the sender email as an environment variable:
+   ```bash
+   export SENDER_EMAIL=your-verified-email@example.com
+   ```
+4. Run the SES test script:
+   ```bash
+   ./test_ses_delivery.py
+   ```
+
+This script will:
+- Generate a sample wellness plan
+- Create a placeholder PDF file
+- Send a real email with the PDF attachment using AWS SES
+- Log the results and SES Message ID if successful
+
+### Mock Implementations for External Services
+
+For testing other components, mock implementations are provided in the `src/lambda/mocks/` directory:
+
+- `mock_openai.py`: Simulates OpenAI API responses
+- `mock_email.py`: Captures email sending for verification (when not using real SES)
+- `mock_whatsapp.py`: Logs WhatsApp messages instead of sending them
+- `mock_secrets.py`: Provides fake API keys for testing
+
+These mocks create files in the `test_output/` directory for verification of the expected behavior.
+
 ## License
 
 Proprietary

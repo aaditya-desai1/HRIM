@@ -1,0 +1,5 @@
+
+To: +919876543210
+From: Wellness Center
+Message: Hello Kavita Kapoor, your personalized wellness plan is ready! Please check your email.
+Attachments: test_output/pdfs/Kavita_Kapoor_wellness_plan.pdf

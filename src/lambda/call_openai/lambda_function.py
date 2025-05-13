@@ -23,6 +23,9 @@ OPENAI_API_KEY_SECRET_NAME = os.environ.get('OPENAI_API_KEY_SECRET_NAME', 'HRIM/
 OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o')
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 2
+# Set to true to use local mock response file instead of calling OpenAI API
+USE_LOCAL_MOCK = os.environ.get('USE_LOCAL_MOCK', 'false').lower() == 'true'
+LOCAL_MOCK_FILE = os.environ.get('LOCAL_MOCK_FILE', 'mock_responses/wellness_plan.txt')
 
 def lambda_handler(event, context):
     """
@@ -53,23 +56,29 @@ def lambda_handler(event, context):
         # Update job status
         utils.update_job_status(job_id, 'CALLING_OPENAI')
         
-        # Get OpenAI API key from Secrets Manager
-        api_key = get_openai_api_key()
-        if not api_key:
-            error_message = "Failed to retrieve OpenAI API key"
-            utils.handle_error(job_id, error_message)
-            return {
-                'statusCode': 500,
-                'error': error_message
-            }
-        
-        # Configure OpenAI client
-        openai.api_key = api_key
-        
-        # Call OpenAI API with retry logic
-        gpt_response = call_openai_with_retry(formatted_prompt)
-        
-        logger.info(f"Successfully received OpenAI API response for job {job_id}")
+        # Check if we should use local mock file
+        if USE_LOCAL_MOCK:
+            logger.info(f"Using local mock response from {LOCAL_MOCK_FILE}")
+            gpt_response = get_local_mock_response(LOCAL_MOCK_FILE)
+            logger.info("Successfully loaded mock OpenAI response")
+        else:
+            # Get OpenAI API key from Secrets Manager
+            api_key = get_openai_api_key()
+            if not api_key:
+                error_message = "Failed to retrieve OpenAI API key"
+                utils.handle_error(job_id, error_message)
+                return {
+                    'statusCode': 500,
+                    'error': error_message
+                }
+            
+            # Configure OpenAI client
+            openai.api_key = api_key
+            
+            # Call OpenAI API with retry logic
+            gpt_response = call_openai_with_retry(formatted_prompt)
+            
+            logger.info(f"Successfully received OpenAI API response for job {job_id}")
         
         # Update job status
         utils.update_job_status(job_id, 'OPENAI_RESPONSE_RECEIVED')
@@ -89,6 +98,61 @@ def lambda_handler(event, context):
             'statusCode': 500,
             'error': error_message
         }
+
+def get_local_mock_response(file_path):
+    """
+    Get a mock response from a local file instead of calling OpenAI API.
+    
+    Args:
+        file_path (str): Path to the mock response file
+        
+    Returns:
+        str: Content of the mock response file
+        
+    Raises:
+        Exception: If file cannot be read
+    """
+    try:
+        # Support both absolute and relative paths
+        if not os.path.isabs(file_path):
+            # Try to find the file in several common locations
+            potential_paths = [
+                file_path,
+                os.path.join(os.path.dirname(__file__), file_path),
+                os.path.join(os.path.dirname(os.path.dirname(__file__)), file_path),
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), file_path),
+                os.path.join('src', 'lambda', 'mocks', 'mock_responses', os.path.basename(file_path)),
+            ]
+            
+            for path in potential_paths:
+                if os.path.exists(path):
+                    file_path = path
+                    break
+            else:
+                raise FileNotFoundError(f"Could not find mock response file in any of: {potential_paths}")
+        
+        with open(file_path, 'r') as f:
+            return f.read()
+    except Exception as e:
+        logger.error(f"Error reading mock response file: {str(e)}")
+        # Return a minimal default response if file cannot be read
+        return """# Four-Week Meal Plan
+
+## Week 1 Meal Plan:
+- This is a mock wellness plan.
+- The actual file could not be loaded.
+
+## DOs:
+- DO include protein-rich foods
+- DO drink at least 8 glasses of water
+
+## DON'Ts:
+- DON'T skip meals
+- DON'T consume caffeine after 2 PM
+
+## Summary & Follow-up
+This is a mock wellness plan for testing purposes only.
+"""
 
 def get_openai_api_key():
     """

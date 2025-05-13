@@ -1,0 +1,83 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment files
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+# Terraform artifacts
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/.terraform.tfstate.lock.info
+terraform/tfplan
+terraform/crash.log
+terraform/override.tf
+terraform/override.tf.json
+terraform/*_override.tf
+terraform/*_override.tf.json
+
+# AWS Lambda deployment packages
+*.zip
+lambda-layer.zip
+lambda-*.zip
+
+# AWS credentials and profiles
+.aws/
+credentials
+config
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Local testing and temporary files
+test/
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Secrets and certificates
+*.pem
+*.key
+*secret*.json
+*credentials*.json
+
+# Documentation build
+_build/
+_static/
+_templates/ 
